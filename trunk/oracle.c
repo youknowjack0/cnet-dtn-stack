@@ -19,6 +19,9 @@
  */
 #include "dtn.h"
 
+/* todo: globalize this, make it a correct number */
+#define MAXNODES 1000
+
 /* structure to represent node and location */
 typedef struct {
 	CnetAddress addr;
@@ -31,10 +34,11 @@ typedef struct {
 	NodeLocation senderLocation;
 	uint32_t freeBufferSpace; /* how many bytes of space available in transmitting nodes' public buffer */
 	uint16_t locationsSize; /* how many elements in locations */
-	NodeLocation * locations; /* array of (last known) locations of known hosts */	
+	NodeLocation[MAXNODES] locations; /* array of (last known) locations of known hosts */	
 } OraclePacket;
 
 /* structure to store information about neighbours */
+/* TODO: store distance to this neighbour here to speed up computation */
 typedef struct {
 	NodeLocation nl;
 	uint32_t freeBufferSpace;
@@ -42,8 +46,8 @@ typedef struct {
 } Neighbour;
 
 //last known addresses for all known nodes
-Neighbour * positionDB;
-int dbsize;
+static Neighbour * positionDB;
+static int dbsize;
 
 static int compareNL(const void * key, const void * elem) {
 	return (int)(key) - (int)(((Neighbour)(elem))->NodeLocation.addr);
@@ -70,10 +74,34 @@ static void savePosition(NodeLocation n) {
 	}
 }
 
+/* checksum an oracle packet, return the result
+ * crc32
+ */
+static uint32_t checksum_oracle_packet(OraclePacket * p) {
+	return CNET_crc32((char*)p + sizeof(p.checksum), sizeof(p) - sizeof(p.locations) + sizeof(NodeLocations)*p.locationsSize - sizeof(p.checksum));
+}
+
 /* broadcast info about this node and other known nodes
  */
 static void sendOracleBeacon() {
+	/* possible todo: restructure the Neighbour data so that this can be done with one memcpy */
+	OraclePacket p;
+	for(int i=0;i<dbsize;i++) {
+		p.locations[i] = positionDB[i].nl;
+	}
+	p.freeBufferSpace = get_public_nbytes_free();
+	p.locationsSize = dbsize;
+	p.senderLocation.addr = nodeinfo.address;
+	CnetAddress loc;
+	CNET_get_position(&loc, NULL);
+	p.senderLocation.loc = loc;	
+	char * pp = &((char*)p);	
+	p.checksum = checksum_oracle_packet(&p);
+	/* todo: macro for the packet header */
+	link_send_info(pp, sizeof(p) - sizeof(p.locations) + sizeof(NodeLocations)*dbsize, ALLNODES);
 
+	/* send again later */
+	CNET_start_timer(EV_TIMER7, (CnetTime)ORACLEINTERVAL, 0);
 }
 
 /* process an oracle packet and update local knowledge
@@ -88,7 +116,7 @@ static void processBeacon(OraclePacket * p) {
 	/* save some near-neighbour specific info */
 	savePosition(p->senderLocation);
 	Neighbour * nbp = bsearch(&(p->senderLocation.addr), positionDB, dbsize, sizeof(Neighbour), compareNL);
-	nbp->lastBeacon = 69; //TODO: Timestamp here
+	nbp->lastBeacon = nodeinfo.time_in_usec; 
 	nbp->freeBufferSpace = p->freeBufferSpace;
 }
 
@@ -98,9 +126,28 @@ static void processBeacon(OraclePacket * p) {
  * last known position for l.
  */
 static void queryPosition(CnetLocation * l, CnetAddress a) {
-	
+	Neighbour * nbp = bsearch(&a, positionDB, dbsize, sizeof(Neighbour), compareNL);
+	if(nbp==NULL) {
+		l = NULL;
+	} else {
+		l = nbp->nl.position;
+	}
 }
 
+/* returns true iff: 
+ * 	a->c > b->c
+ * 	by some interval defined in dtn.h
+ */
+bool isCloser(CnetPosition a, CnetPosition b, CnetPosition c, int interval) {
+	int cax = c.x - a.x;
+	int cay = c.y - a.y;
+	int cbx = c.x - b.x;
+	int cby = c.y - b.y;
+	if( cbx*cbx + cby*cby + MINDIST*MINDIST < cax*cax + cay*cay )
+		return true;
+	else 
+		return false;
+}
 
 /* Return the nth best intermediate node by which the message
  * to dest should be delivered.
@@ -117,7 +164,19 @@ static void queryPosition(CnetLocation * l, CnetAddress a) {
  *
  */
 CnetAddr get_nth_best_node(int n, CnetAddr dest) {
+	CnetTime t = nodeinfo.time_in_usec;
+	if(n!=0) return NULL;
+	else {
+		for(int i=0: i<dbsize;i++) {
+			if(t > positionDB[i].lastBeacon + ORACLEWAIT ) continue; /* skip this neighbour if we haven't had a beacon from it recently */ 
+			CnetPosition destPos = queryPosition(dest); 
+			CnetPosition nextPos = positionDB.nl.loc;
+			CnetPosition myPos = nodeinfo.position;	
+		 	if(isCloser(myPos, nextPos, destPos, MINDIST)) return positionDB.nl.addr; 
+		}
+	}
 	return NULL;
+
 }
 
 /* Messages from other nodes which use link_send_info will
@@ -125,10 +184,17 @@ CnetAddr get_nth_best_node(int n, CnetAddr dest) {
  */
 void oracle_recv(char * msg, int len, CnetAddr rcv) {
 	/* parse info from other nodes to estimate topology */
+	OraclePacket * p = (OraclePacket *) msg;
+	if(checksum_oracle_packet(p)==p->checksum) {
+		processBeacon(p);
+	}
 }
 
 /* function is called on program intialisation 
  */
 void oracle_init() {
+	CNET_srand(nodeinfo.time_of_day.sec + nodeinfo.nodenumber);
 	/* schedule periodic transmission of topology information, or whatever */		
+	CNET_set_handler(EV_TIMER7, sendOracleBeacon, 0);
+	CNET_start_timer(EV_TIMER7, (CnetTime)((CNET_rand() % ORACLEINTERVAL)), 0);
 }
