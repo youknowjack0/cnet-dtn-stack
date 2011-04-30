@@ -4,8 +4,8 @@
 
 /* link.c */
 int get_nbytes_writeable();
-bool link_send_data( char * msg, int len, CnetAddr recv);
-bool link_send_info( char * msg, int len, CnetAddr recv);
+void link_send_data( char * msg, int len, CnetAddr recv);
+void link_send_info( char * msg, int len, CnetAddr recv);
 void link_init();
 
 /* network.c */
