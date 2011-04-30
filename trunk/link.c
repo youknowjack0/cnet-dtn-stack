@@ -13,21 +13,19 @@
 int get_nbytes_writeable();
 
 /* send data msg of length len to receiver recv 
- * returns false on some error? otherwise true	
  */
-bool link_send_data( char * msg, int len, CnetAddr recv) {
+void link_send_data( char * msg, int len, CnetAddr recv) {
 	return false;
 };
 
 /* send info msg of length len to receiver recv
- * returns false on some error otherwise true
  *
  * Note: This function performs the exact same action as
  * link_send_data, but the frames should be marked as 
  * being info types so the receiver knows to pass them to
  * the oracle
  */
-bool link_send_info( char * msg, int len, CnetAddr recv) {
+void link_send_info( char * msg, int len, CnetAddr recv) {
 	return false;
 }
 
@@ -40,10 +38,10 @@ void link_init() {
 /** RECEIVED DATA **/
 
 /* received data frames should be passed to:
- *  net_recv( char * msg, int len, CnetAddr dst);
+ *  net_recv( char * msg, int len, CnetAddr from);
  *
  * received info frames should be passed to: 
- * 	void oracle_recv(char * msg, int len, CnetAddr rcv);
+ * 	void oracle_recv(char * msg, int len, CnetAddr from);
  */
 
 
