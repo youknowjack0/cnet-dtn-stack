@@ -6,6 +6,9 @@
 #define ORACLEWAIT (ORACLEINTERVAL*2) /* time a neighbour will be 'live' after a beacon */
 #define MINDIST 2
 #define MAX_DATAGRAM_SIZE 50000 /* TODO: max datagram size in bytes */
+#define MAXMESSAGESIZE 48699 /* TODO */
+#define NUM_NODES 10 /* TODO: this needs to be accurate, since fakeapp will use it to choose a dest */
+#define LOGDIR "./dtnlog"
 
 /* link.c */
 int get_nbytes_writeable();
@@ -27,7 +30,9 @@ void oracle_init();
 
 /* transport.c */
 void transport_recv(char * msg, int len, CnetAddr sender);
+void transport_datagram(char * msg, int len, CnetAddr destination);
 void transport_init();
 
 /* fakeapp.c */
-void receive_message(char* data, CnetAddr sender) {
+void generate_message();
+void receive_message(char* data, int len, CnetAddr sender);
