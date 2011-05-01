@@ -4,7 +4,7 @@
 EVENT_HANDLER(reboot_node)
 {
 	link_init();
-	newtork_init();
+	net_init();
 	oracle_init();
 	transport_init();
 }

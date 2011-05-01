@@ -12,6 +12,6 @@ void transport_recv(char * msg, int len) {
 }
 
 /* called on app init */
-void tranpsort_init() {
+void transport_init() {
 	/* register handler for application layer events */
 }
