@@ -5,6 +5,7 @@
 #define ORACLEINTERVAL 3000000 /* oracle broadcast interval in microseconds */
 #define ORACLEWAIT (ORACLEINTERVAL*2) /* time a neighbour will be 'live' after a beacon */
 #define MINDIST 2
+#define MAX_DATAGRAM_SIZE 50000 /* TODO: max datagram size in bytes */
 
 /* link.c */
 int get_nbytes_writeable();
@@ -25,5 +26,8 @@ void oracle_recv(char * msg, int len, CnetAddr rcv);
 void oracle_init();
 
 /* transport.c */
-void transport_recv(char * msg, int len);
+void transport_recv(char * msg, int len, CnetAddr sender);
 void transport_init();
+
+/* fakeapp.c */
+void receive_message(char* data, CnetAddr sender) {

@@ -1,0 +1,19 @@
+compile			= "dtn.c link.c network.c oracle.c transport.c"
+
+bandwidth		= 56Kbps,
+
+messagerate             = 1000ms,
+propagationdelay        = 2500ms,
+
+host perth {
+    x=50 y=50
+    winx=0, winy=50
+    link to sydney {
+    }
+}
+
+host sydney {
+    x=400 y=50
+    winx=550, winy=50
+    east east east east east of perth
+}
