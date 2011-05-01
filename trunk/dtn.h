@@ -1,9 +1,10 @@
 #include <cnet.h>
+#include <stdbool.h>
 
 /* some constants here, such as maximum frame lengths */
 #define ORACLEINTERVAL 3000000 /* oracle broadcast interval in microseconds */
 #define ORACLEWAIT (ORACLEINTERVAL*2) /* time a neighbour will be 'live' after a beacon */
-#define MINDIST 2;
+#define MINDIST 2
 
 /* link.c */
 int get_nbytes_writeable();
@@ -19,10 +20,10 @@ void net_recv( char * msg, int len, CnetAddr dst);
 void net_init();
 
 /* oracle.c */
-CnetAddr get_nth_best_node(int n, CnetAddr dest);
+bool get_nth_best_node(CnetAddr * ptr, int n, CnetAddr dest, size_t messageSize);
 void oracle_recv(char * msg, int len, CnetAddr rcv);
 void oracle_init();
 
 /* transport.c */
 void transport_recv(char * msg, int len);
-void tranpsort_init();
+void transport_init();

@@ -15,7 +15,6 @@ int get_nbytes_writeable();
 /* send data msg of length len to receiver recv 
  */
 void link_send_data( char * msg, int len, CnetAddr recv) {
-	return false;
 };
 
 /* send info msg of length len to receiver recv
@@ -26,7 +25,6 @@ void link_send_data( char * msg, int len, CnetAddr recv) {
  * the oracle
  */
 void link_send_info( char * msg, int len, CnetAddr recv) {
-	return false;
 }
 
 /* called on program initialisation */

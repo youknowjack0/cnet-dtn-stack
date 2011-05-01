@@ -18,14 +18,15 @@
  *
  */
 #include "dtn.h"
+#include <stdlib.h>
 
 /* todo: globalize this, make it a correct number */
 #define MAXNODES 1000
 
 /* structure to represent node and location */
 typedef struct {
-	CnetAddress addr;
-	CnetLocation loc;
+	CnetAddr addr;
+	CnetPosition loc;
 } NodeLocation;
 
 /* the packet structure for oracle information transmission */
@@ -34,7 +35,7 @@ typedef struct {
 	NodeLocation senderLocation;
 	uint32_t freeBufferSpace; /* how many bytes of space available in transmitting nodes' public buffer */
 	uint16_t locationsSize; /* how many elements in locations */
-	NodeLocation[MAXNODES] locations; /* array of (last known) locations of known hosts */	
+	NodeLocation locations[MAXNODES]; /* array of (last known) locations of known hosts */	
 } OraclePacket;
 
 /* structure to store information about neighbours */
@@ -50,7 +51,9 @@ static Neighbour * positionDB;
 static int dbsize;
 
 static int compareNL(const void * key, const void * elem) {
-	return (int)(key) - (int)(((Neighbour)(elem))->NodeLocation.addr);
+	uint32_t k = *((uint32_t *)key);
+	uint32_t addr = (uint32_t)(((Neighbour *)(elem))->nl.addr);
+	return k-addr ;
 }
 
 /* add a position to the positionDB
@@ -59,7 +62,7 @@ static int compareNL(const void * key, const void * elem) {
  * already exists
  */
 static void savePosition(NodeLocation n) {
-	CnetAddress * np = &(n.addr);
+	CnetAddr * np = &(n.addr);
 	Neighbour * nbp  = bsearch(np, positionDB, dbsize, sizeof(Neighbour), compareNL);
 	if(nbp == NULL) {
 		//append and sort
@@ -70,7 +73,7 @@ static void savePosition(NodeLocation n) {
 		qsort(positionDB, dbsize, sizeof(Neighbour), compareNL);
 	} else {
 		//update
-		np->loc = n.loc;
+		nbp->nl.loc = n.loc;
 	}
 }
 
@@ -78,7 +81,7 @@ static void savePosition(NodeLocation n) {
  * crc32
  */
 static uint32_t checksum_oracle_packet(OraclePacket * p) {
-	return CNET_crc32((char*)p + sizeof(p.checksum), sizeof(p) - sizeof(p.locations) + sizeof(NodeLocations)*p.locationsSize - sizeof(p.checksum));
+	return CNET_crc32((unsigned char*)p + sizeof(p->checksum), sizeof(p) - sizeof(p->locations) + sizeof(NodeLocation)*p->locationsSize - sizeof(p->checksum));
 }
 
 /* broadcast info about this node and other known nodes
@@ -92,13 +95,13 @@ static void sendOracleBeacon() {
 	p.freeBufferSpace = get_public_nbytes_free();
 	p.locationsSize = dbsize;
 	p.senderLocation.addr = nodeinfo.address;
-	CnetAddress loc;
+	CnetPosition loc;
 	CNET_get_position(&loc, NULL);
 	p.senderLocation.loc = loc;	
-	char * pp = &((char*)p);	
+	char * pp = (char *)(&(p));	
 	p.checksum = checksum_oracle_packet(&p);
 	/* todo: macro for the packet header */
-	link_send_info(pp, sizeof(p) - sizeof(p.locations) + sizeof(NodeLocations)*dbsize, ALLNODES);
+	link_send_info(pp, sizeof(p) - sizeof(p.locations) + sizeof(NodeLocation)*dbsize, ALLNODES);
 
 	/* send again later */
 	CNET_start_timer(EV_TIMER7, (CnetTime)ORACLEINTERVAL, 0);
@@ -125,12 +128,12 @@ static void processBeacon(OraclePacket * p) {
  * note: location (l) will be set to NULL if there is no
  * last known position for l.
  */
-static void queryPosition(CnetLocation * l, CnetAddress a) {
+static void queryPosition(CnetPosition * l, CnetAddr a) {
 	Neighbour * nbp = bsearch(&a, positionDB, dbsize, sizeof(Neighbour), compareNL);
 	if(nbp==NULL) {
 		l = NULL;
 	} else {
-		l = nbp->nl.position;
+		*l = nbp->nl.loc;
 	}
 }
 
@@ -143,39 +146,44 @@ bool isCloser(CnetPosition a, CnetPosition b, CnetPosition c, int interval) {
 	int cay = c.y - a.y;
 	int cbx = c.x - b.x;
 	int cby = c.y - b.y;
-	if( cbx*cbx + cby*cby + MINDIST*MINDIST < cax*cax + cay*cay )
+	if( cbx*cbx + cby*cby + interval*interval < cax*cax + cay*cay )
 		return true;
 	else 
 		return false;
 }
 
-/* Return the nth best intermediate node by which the message
+/* Sets ptr to the best intermediate node by which a messag
  * to dest should be delivered.
  * n is indexed from 0
  *
- * Returns NULL if there is no best node (i.e. it is best to
- * buffer the message), otherwise returns the CnetAddr of the 
- * best intermediate node.
+ * Returns false if there is no best node (i.e. it is best to
+ * buffer the message), otherwise returns true
  *
- * Note: this function should only return the address of a node
- * which is currently reachable. So if there are no good nodes in
- * range, the function should return NULL until a good node comes
- * in range.
+ * This function will only 'recommend' a node which is in range and
+ * has buffer space to transmit. 
+ *
+ * Note: function will currently recommend broadcasting to ANY node
+ * which causes an improvement, rather than greedily trying to find
+ * the BEST node.
  *
  */
-CnetAddr get_nth_best_node(int n, CnetAddr dest) {
+bool get_nth_best_node(CnetAddr * ptr, int n, CnetAddr dest, size_t message_size) {
 	CnetTime t = nodeinfo.time_in_usec;
-	if(n!=0) return NULL;
+	if(n!=0) return false;
 	else {
-		for(int i=0: i<dbsize;i++) {
+		for(int i=0; i<dbsize;i++) {
 			if(t > positionDB[i].lastBeacon + ORACLEWAIT ) continue; /* skip this neighbour if we haven't had a beacon from it recently */ 
-			CnetPosition destPos = queryPosition(dest); 
-			CnetPosition nextPos = positionDB.nl.loc;
-			CnetPosition myPos = nodeinfo.position;	
-		 	if(isCloser(myPos, nextPos, destPos, MINDIST)) return positionDB.nl.addr; 
+			if((int)positionDB[i].freeBufferSpace < message_size) continue; /* enough buffer space for this massage */
+			CnetPosition destPos; queryPosition(&destPos, dest); 
+			CnetPosition nextPos = positionDB[i].nl.loc;
+			CnetPosition myPos; CNET_get_position(&myPos, NULL);	
+		 	if( isCloser(myPos, nextPos, destPos, MINDIST) ) {
+				*ptr = positionDB[i].nl.addr; 
+				return true; 
+			}
 		}
 	}
-	return NULL;
+	return false;
 
 }
 

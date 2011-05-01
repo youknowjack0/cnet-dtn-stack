@@ -39,6 +39,11 @@ bool net_send( char * msg, int len, CnetAddr dst) {
 	 * or buffer it if there is no good node, or if the 
 	 * data link layer buffers are full (i.e. the medium
 	 * cannot accommodate more traffic)
+	 *
+	 * Note: get_nth_best_node currently only finds the best
+	 * node, so calling on anything other than the 0th node
+	 * will return false
+	 *
 	 */
 	return false;
 }
