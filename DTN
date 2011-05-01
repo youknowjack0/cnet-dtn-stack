@@ -1,4 +1,4 @@
-compile			= "dtn.c link.c network.c oracle.c transport.c"
+compile			= "dtn.c link.c network.c oracle.c transport.c fakeapp.c"
 
 bandwidth		= 56Kbps,
 

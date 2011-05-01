@@ -81,6 +81,7 @@ static void savePosition(NodeLocation n) {
  * crc32
  */
 static uint32_t checksum_oracle_packet(OraclePacket * p) {
+	/* TODO: might need to deal with struct field offset? */
 	return CNET_crc32((unsigned char*)p + sizeof(p->checksum), sizeof(p) - sizeof(p->locations) + sizeof(NodeLocation)*p->locationsSize - sizeof(p->checksum));
 }
 
