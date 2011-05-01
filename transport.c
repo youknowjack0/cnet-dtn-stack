@@ -3,11 +3,15 @@
  */
 #include "dtn.h"
 
-/* TODO: define a message structure */
+/* a message structure */
+typedef struct {
+	uint32_t checksum;
+	char msg[MAX_DATAGRAM_SIZE];
+} Datagram;
 
 /* handle message from the network layer, 
  * check integrity and pass to the application */
-void transport_recv(char * msg, int len) {
+void transport_recv(char * msg, int len, CnetAddr sender) {
 	
 }
 
