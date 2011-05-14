@@ -9,7 +9,6 @@ typedef struct {
 	int			dest;	// Zero if beacon, so broadcasted
 	int 		src;
 	size_t		len;
-	int			seq;	// Zero if beacon
 	MSG			msg;	// Holds list of recently seen addresses if beacon
 } FRAME;
 
