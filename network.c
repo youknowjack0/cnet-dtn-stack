@@ -13,28 +13,149 @@
  */
 #include "dtn.h"
 
-/* TODO: define a network packet structure */
+#define BUFF_SIZE 1000000
+#define MESSAGE_SIZE MAX_MESSAGE_SIZE
 
-/* amount of space for messages in the public buffer 
- * (that is, messages originating from other hosts)
- */
+
+/* network packet structure */
+typedef struct {
+	CnetAddr source;
+	CnetAddr dest;
+	/* length of msg */
+	int len;
+	char msg[MESSAGE_SIZE];
+	
+} packet;
+
+struct stack_el{
+	packet* p;
+	struct stack_el* down;
+	struct stack_el* up;
+};
+
+typedef struct {
+	 struct stack_el* top;
+	 struct stack_el* bottom;
+} stack;
+
+
+static int free_bytes;
+static stack buff;
+
+
 int get_public_nbytes_free() {
-	return 0;
+	return free_bytes;
 }
 
-/* amount of space for messages in the private buffer
- * (that is, the buffer for messages originating from
- * this host)
- */
 int get_private_nbytes_free() {
-	return 0;
+	return free_bytes;
+}
+
+static void new_stack(stack* s) {
+	struct stack_el* el = malloc(sizeof(struct stack_el));
+	el->up = NULL;
+	el->down = NULL;
+	el->p = NULL;
+	s->top = el;
+	s->bottom = el;
+}
+
+
+/* returns true if a stack is empty */
+static bool is_empty(stack* s) {
+	return s->top->down == NULL;
+}
+
+
+/* delete a packet from the bottom of the stack */
+static packet* dequeue(stack* s) {
+	if(is_empty(s)) {
+		return NULL;
+	}
+	else {
+		packet* tmp = s->bottom->p;
+		s->bottom = s->bottom->up;
+		free(s->bottom->down);
+		s->bottom->down = NULL;
+		free_bytes += (sizeof(struct stack_el) + sizeof(packet) - MESSAGE_SIZE + tmp->len);
+		return tmp;
+	}
+}
+
+/* push a packet onto a stack */
+static void push(stack* s, packet* pack) {
+	int mem_used = (sizeof(struct stack_el) + sizeof(packet) - MESSAGE_SIZE + pack->len);
+
+	while(get_public_nbytes_free() < mem_used) {
+		free(dequeue(s));
+	}
+
+	struct stack_el* e = malloc(sizeof(struct stack_el));
+	e->p = pack;
+	e->down = s->top;
+	e->up = NULL;
+	s->top->up = e;
+	s->top = e;
+	free_bytes -= mem_used;
+}
+
+
+/* remove a packet from a stack */
+static packet* pop(stack* s) {
+	if (is_empty(s)) {
+		return NULL;
+	}
+	else {
+		packet* tmp = s->top->p;
+		s->top = s->top->down;
+		free(s->top->up);
+		s->top->up = NULL;
+		free_bytes += (sizeof(struct stack_el) + sizeof(packet) - MESSAGE_SIZE + tmp->len);
+		return tmp;
+	}
+}
+
+/* returns but does not remove the top of a stack */
+/* NOT USED
+static packet* peek(stack* s) {
+	if (is_empty(s)) {
+		return NULL;
+	}
+	else {
+		return s->top->p;
+	}
+}
+*/
+
+/* Use the oracle to find the best link on which
+   to forward the message. If such a link does exist, send
+   it to the data link layer and free the memory 
+   (free(pack)). If no such link exists
+   then buffer pack */
+static void try_to_send(packet* pack, stack* s) {
+	int mem_used = sizeof(packet) - MESSAGE_SIZE + pack->len;
+	CnetAddr* add_p = NULL;
+	bool can_send = get_nth_best_node(add_p, 0, pack->dest, mem_used);
+
+	if (can_send) {
+		/* send it to the DLL and free the memory (free(pack)).
+		   At this point, I'm not doing anything about checking 
+		   the DLL buffer.
+		   TODO: check the DLL buffer!		 */
+		link_send_data((char*) pack, mem_used, *add_p);
+		free(pack);
+	}
+	else {
+		/* buffer it. */
+		push(s, pack);
+	}
 }
 
 /* Send data msg length len to destination dst.
  * This function is called from the transport layer
  * return false on some error
  */
-bool net_send( char * msg, int len, CnetAddr dst) {
+bool net_send(char* msg, int len, CnetAddr dst) {
 	/* call get_nth_best_node and try send the data there,
 	 * or buffer it if there is no good node, or if the 
 	 * data link layer buffers are full (i.e. the medium
@@ -45,27 +166,82 @@ bool net_send( char * msg, int len, CnetAddr dst) {
 	 * will return false
 	 *
 	 */
-	return false;
+
+	int mem_used = sizeof(packet) - MESSAGE_SIZE + len;
+	packet* pack = malloc(mem_used);
+	pack->source = nodeinfo.nodenumber;
+	pack->dest = dst;
+	pack->len = len;
+	memcpy(pack->msg, msg, len);
+
+	/* attempt to send message. if it can not be sent, buffer
+	   it on buff */
+	try_to_send(pack, &buff);
+	/* TODO: something about the return value, I guess */
+	return true;
 }
 
 /* Handle data message length len to destination dst.
- * This function is called from the data link layer.
+ * This function is called from the data link layerr
+ *
+ * The data link layer header has been stripped, so
+ * just cast *msg to a packet.
  *
  * Note: If this message has arrived at its destination
- * (current host == dst) this simply needs to pass the message
+ * (pack->dest == nodeinfo.nodenumber)this simply needs 
+ * to strip the network layer header and pass the message 
  * to the transport layer.
  *
- * If the destination is another host, then some other action
- * should be taken to try get it there
+ * If the destination is another host try to send it or 
+ * buffer it.
  */
-void net_recv( char * msg, int len, CnetAddr dst) {
+/* TODO: check that len is the actual length of msg (i.e. the packet) */
+void net_recv(char* msg, int len, CnetAddr src) {
+	/* in this case, the message received from the DLL is just a
+	   packet. The size of the packet is len */
+	int mem_used = len;
+	packet* pack = malloc(mem_used);
+	memcpy(pack, msg, mem_used);
+	/* if the destination is this node */
+	if(nodeinfo.nodenumber == pack->dest) {
+		/* pass it right on up to the transport layer.
+		   free the memory (free(pack)).		*/
+		transport_recv(pack->msg, pack->len, pack->source);
+		free(pack);
+	}
+	else {
+		/* attempt to send message. if it can not be sent, buffer
+		   it on buff */
+		try_to_send(pack, &buff);
+	}
+}
 
+/* Called by oracle when topology data is updated (beacon is received) */
+void net_send_buffered() {
+	/* Attempt to send buffered messages. Use a temporary stack to 
+	   store packets that are popped but can't be sent. Then, when
+	   when we're done, simply push the whole temporary stack back
+	   onto the buffer. Free the memory for any packets that are sent. */
+	stack* temp_stack = malloc(sizeof(stack));
+	new_stack(temp_stack);
+
+	packet* tmp = pop(&buff);
+	while(tmp != NULL) {
+		try_to_send(tmp, temp_stack);
+		tmp = pop(&buff);
+	}
+
+	tmp = pop(temp_stack);
+	while(tmp != NULL) {
+		push(&buff, tmp);
+		tmp = pop(temp_stack);
+	}
+	
+	free(temp_stack);
 }
 
 /* called at program start */
 void net_init() {
-	/* initialise message queues, etc... */
+	free_bytes = BUFF_SIZE;
+	new_stack(&buff);
 }
-
-
-
