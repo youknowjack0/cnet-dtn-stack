@@ -1,5 +1,7 @@
 #include <cnet.h>
 #include <stdbool.h>
+#include <stdlib.h>
+#include <string.h>
 
 /* some constants here, such as maximum frame lengths */
 #define ORACLEINTERVAL 3000000 /* oracle broadcast interval in microseconds */
