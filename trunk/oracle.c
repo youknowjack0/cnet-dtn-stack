@@ -27,21 +27,21 @@
 typedef struct {
 	CnetAddr addr;
 	CnetPosition loc;
-} NodeLocation;
+} NODELOCATION;
 
 /* the packet structure for oracle information transmission */
 typedef struct {
 	uint32_t checksum; /*crc32 checksum of the oraclepacket including 'locations' payload */
-	NodeLocation senderLocation;
+	NODELOCATION senderLocation;
 	uint32_t freeBufferSpace; /* how many bytes of space available in transmitting nodes' public buffer */
 	uint16_t locationsSize; /* how many elements in locations */
-	NodeLocation locations[MAXNODES]; /* array of (last known) locations of known hosts */	
+	NODELOCATION locations[MAXNODES]; /* array of (last known) locations of known hosts */	
 } OraclePacket;
 
 /* structure to store information about neighbours */
 /* TODO: store distance to this neighbour here to speed up computation */
 typedef struct {
-	NodeLocation nl;
+	NODELOCATION nl;
 	uint32_t freeBufferSpace;
 	uint64_t lastBeacon; /* when did we last see a bacon from this noodle */
 } Neighbour;
@@ -61,7 +61,7 @@ static int compareNL(const void * key, const void * elem) {
  * or update the existing position if the address
  * already exists
  */
-static void savePosition(NodeLocation n) {
+static void savePosition(NODELOCATION n) {
 	CnetAddr * np = &(n.addr);
 	Neighbour * nbp  = bsearch(np, positionDB, dbsize, sizeof(Neighbour), compareNL);
 	if(nbp == NULL) {
@@ -82,7 +82,7 @@ static void savePosition(NodeLocation n) {
  */
 static uint32_t checksum_oracle_packet(OraclePacket * p) {
 	/* TODO: might need to deal with struct field offset? */
-	return CNET_crc32((unsigned char*)p + sizeof(p->checksum), sizeof(p) - sizeof(p->locations) + sizeof(NodeLocation)*p->locationsSize - sizeof(p->checksum));
+	return CNET_crc32((unsigned char*)p + sizeof(p->checksum), sizeof(p) - sizeof(p->locations) + sizeof(NODELOCATION)*p->locationsSize - sizeof(p->checksum));
 }
 
 /* broadcast info about this node and other known nodes
@@ -102,7 +102,7 @@ static void sendOracleBeacon() {
 	char * pp = (char *)(&(p));	
 	p.checksum = checksum_oracle_packet(&p);
 	/* todo: macro for the packet header */
-	link_send_info(pp, sizeof(p) - sizeof(p.locations) + sizeof(NodeLocation)*dbsize, ALLNODES);
+	link_send_info(pp, sizeof(p) - sizeof(p.locations) + sizeof(NODELOCATION)*dbsize, ALLNODES);
 
 	/* send again later */
 	CNET_start_timer(EV_TIMER7, (CnetTime)ORACLEINTERVAL, 0);
