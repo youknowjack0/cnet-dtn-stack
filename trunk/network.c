@@ -40,7 +40,7 @@ typedef struct {
 
 
 static int free_bytes;
-static stack buff;
+static stack* buff;
 
 
 int get_public_nbytes_free() {
@@ -51,13 +51,15 @@ int get_private_nbytes_free() {
 	return free_bytes;
 }
 
-static void new_stack(stack* s) {
+static stack* new_stack() {
+	stack* s = malloc(sizeof(stack));
 	struct stack_el* el = malloc(sizeof(struct stack_el));
 	el->up = NULL;
 	el->down = NULL;
 	el->p = NULL;
 	s->top = el;
 	s->bottom = el;
+	return s;
 }
 
 
@@ -176,7 +178,7 @@ bool net_send(char* msg, int len, CnetAddr dst) {
 
 	/* attempt to send message. if it can not be sent, buffer
 	   it on buff */
-	try_to_send(pack, &buff);
+	try_to_send(pack, buff);
 	/* TODO: something about the return value, I guess */
 	return true;
 }
@@ -212,7 +214,7 @@ void net_recv(char* msg, int len, CnetAddr src) {
 	else {
 		/* attempt to send message. if it can not be sent, buffer
 		   it on buff */
-		try_to_send(pack, &buff);
+		try_to_send(pack, buff);
 	}
 }
 
@@ -222,18 +224,17 @@ void net_send_buffered() {
 	   store packets that are popped but can't be sent. Then, when
 	   when we're done, simply push the whole temporary stack back
 	   onto the buffer. Free the memory for any packets that are sent. */
-	stack* temp_stack = malloc(sizeof(stack));
-	new_stack(temp_stack);
+	stack* temp_stack = new_stack();
 
-	packet* tmp = pop(&buff);
+	packet* tmp = pop(buff);
 	while(tmp != NULL) {
 		try_to_send(tmp, temp_stack);
-		tmp = pop(&buff);
+		tmp = pop(buff);
 	}
 
 	tmp = pop(temp_stack);
 	while(tmp != NULL) {
-		push(&buff, tmp);
+		push(buff, tmp);
 		tmp = pop(temp_stack);
 	}
 	
@@ -243,5 +244,5 @@ void net_send_buffered() {
 /* called at program start */
 void net_init() {
 	free_bytes = BUFF_SIZE;
-	new_stack(&buff);
+	buff = 	new_stack();
 }

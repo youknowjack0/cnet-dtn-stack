@@ -15,10 +15,10 @@ typedef struct {
 
 typedef struct {
 	FRAMETYPE	type;
-	int			dest;	// Zero if beacon, so broadcasted
+	int		dest;	// Zero if beacon, so broadcasted
 	int 		src;
 	size_t		len;
-	MSG			msg;	// Holds list of recently seen addresses if beacon
+	char *		msg;	// Holds list of recently seen addresses if beacon
 } FRAME;
 
 #define FRAME_HEADER_SIZE (sizeof(FRAME) - sizeof(MSG))
@@ -56,13 +56,13 @@ int enqueue(struct queue *q, FRAME f)
 	return 0;
 }
 
+// TODO: Whut? Why do we pass it f? What is this meant to be returning?
 int dequeue(struct queue *q, FRAME *f)
 {
-	char* value = 0;
 	if (!q->head) {
 		return -1;
 	}
-	value = q->head->f.msg.data;
+	//char* value = q->head->f.msg; // What is this for?
 	struct node *tmp = q->head;
 	if (q->head == q->tail) {
 		q->head = q->tail = NULL;
@@ -93,12 +93,12 @@ int delete_queue(struct queue *q)
 static	int64_t	freq	= DEFAULT_FREQ;
 #define TIMESLOT 			CNET_rand()%freq + 1
 
-static CnetTimerID timer;
+//static CnetTimerID timer; TODO: Is it ok that I commented this out? It wasn't used - Renee.
 static CnetTimerID sendTimer;
 
 struct queue * buf; 
 
-static FRAME info; //info frame buffer
+static FRAME* info; //info frame buffer
 static int numFrames;
 static int backoff = 0;
 
@@ -112,11 +112,13 @@ void send_frame(FRAMETYPE type, CnetAddr dest, int len, char *data) {
 	f.dest = dest;
 	f.src = nodeinfo.nodenumber;
 	f.len = len;
+	f.msg = malloc(len);
 	if(data != NULL)
-		memcpy(f.msg.data, data, len);
-	else f.msg.data = NULL;
+		memcpy(f.msg, data, len);
+	else 
+		f.msg = NULL;
 	
-	size_t msglen = FRAMESIZE(f);
+	size_t msglen = sizeof(FRAME) + len; // TODO: check that this is the correct size!! I just made this up - Renee.
 	//send frame over cnet
 	CHECK(CNET_write_physical(1, &f, &msglen));
 }
@@ -130,7 +132,8 @@ void link_send_data( char * msg, int len, CnetAddr recv) {
 		f.dest = recv;
 		f.src = nodeinfo.nodenumber;
 		f.len = len;
-		memcpy(f.msg.data, msg, len);
+		f.msg = malloc(len);
+		memcpy(f.msg, msg, len);
 		enqueue(buf, f);
 }
 
@@ -142,12 +145,13 @@ void link_send_data( char * msg, int len, CnetAddr recv) {
  * the oracle
  */
 void link_send_info( char * msg, int len, CnetAddr recv) {
-	FRAME f;
-	f.type = DL_DATA;
-	f.dest = recv;
-	f.src = nodeinfo.nodenumber;
-	f.len = len;
-	memcpy(f.msg.data, msg, len);
+	FRAME* f = malloc(sizeof(FRAME));
+	f->type = DL_DATA;
+	f->dest = recv;
+	f->src = nodeinfo.nodenumber;
+	f->len = len;
+	f->msg = malloc(len);
+	memcpy(f->msg, msg, len);
 	info = f;
 	//send_frame(DL_BEACON, recv, len, msg);
 }
@@ -161,10 +165,10 @@ static EVENT_HANDLER(collision) {
 static EVENT_HANDLER(send) {
 	if(CNET_carrier_sense(1)==0) {
 		backoff = 0;
-		if((void*)info != NULL) {
-			FRAME b = info;
-			info = (FRAME*)NULL;
-			send_frame(DL_BEACON, b.dest, b.len, b.msg.data);
+		if(info != NULL) {
+			FRAME* b = info;
+			info = NULL;
+			send_frame(DL_BEACON, b->dest, b->len, b->msg);
 			sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, 0);
 		} else {
 			FRAME f = buf->head->f;
@@ -174,16 +178,17 @@ static EVENT_HANDLER(send) {
 		//wait for CTS
 		//send data
 		//wait for ack
+//TODO: Free b?
 	}
 	
 }
 
 static EVENT_HANDLER(timeout) {
-	int numTimeouts;
+	CnetData numTimeouts = 0; // ok to init to zero? I don't know what's going on here - Renee.
 	if(CNET_timer_data(timer, &numTimeouts) == 0) { 
 		if(numTimeouts > 3) {
 			sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, 0);
-			FRAME* f;
+			FRAME* f = malloc(sizeof(FRAME));
 			dequeue(buf, f);
 			free(f);
 		} else {
@@ -191,7 +196,7 @@ static EVENT_HANDLER(timeout) {
 		}
 	} else {
 		sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, 0);
-		FRAME* f;
+		FRAME* f = malloc(sizeof(FRAME));
 		dequeue(buf, f);
 		free(f);
 	}
@@ -209,7 +214,7 @@ static EVENT_HANDLER(receive) {
 	
 	switch(f.type) {
 		case DL_BEACON:
-			oracle_recv(&(f.msg.data), f.len, f.src);
+			oracle_recv(f.msg, f.len, f.src);
 			break;
 		case DL_RTS:
 			if(f.dest == nodeinfo.nodenumber) {
@@ -221,13 +226,13 @@ static EVENT_HANDLER(receive) {
 			if(f.dest == nodeinfo.nodenumber) {
 				FRAME next;
 				dequeue(buf, &next);
-				send_frame(next.type, next.src, next.len, &next.msg.data); //send DATA
+				send_frame(next.type, next.src, next.len, next.msg); //send DATA
 			}
 			timer = CNET_start_timer(EV_TIMER1, WAITINGTIME, 0);
 			break;
 		case DL_DATA:
 			if(f.dest == nodeinfo.nodenumber) {
-				net_recv(&f.msg.data, f.len, f.src);
+				net_recv(f.msg, f.len, f.src);
 			}
 			timer = CNET_start_timer(EV_TIMER1, WAITINGTIME, 0);
 			break;
