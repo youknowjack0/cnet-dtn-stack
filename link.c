@@ -6,7 +6,13 @@
  */
 #include "dtn.h"
 
-/*Frame definitions*/
+#define TIMESLOT 			CNET_rand()%freq + 1
+#define FRAME_HEADER_SIZE (sizeof(FRAME) - sizeof(MSG))
+#define FRAME_SIZE(f)	  (FRAME_HEADER_SIZE + f.len)
+#define WAITINGTIME (FRAME_HEADER_SIZE + len)/linkinfo[1].bandwidth + linkinfo[1].propagationdelay
+#define	DEFAULT_FREQ 1000000 //(3*FRAME_HEADER_SIZE + MAX_DATAGRAM_SIZE)/linkinfo[1].bandwidth + linkinfo[1].propagationdelay
+
+/* Type definitions*/
 typedef enum {DL_DATA, DL_BEACON, DL_RTS, DL_CTS, DL_ACK} FRAMETYPE;
 
 typedef struct {
@@ -18,15 +24,10 @@ typedef struct {
 	int		dest;	// Zero if beacon, so broadcasted
 	int 		src;
 	size_t		len;
-	char *		msg;	// Holds list of recently seen addresses if beacon
+	char *		msg;
 } FRAME;
 
-#define FRAME_HEADER_SIZE (sizeof(FRAME) - sizeof(MSG))
 
-#define FRAME_SIZE(f)	  (FRAME_HEADER_SIZE + f.len)
-/*end of frame definitions*/
-
-/*queue definitions*/
 struct node
 {
 	FRAME f;
@@ -39,6 +40,23 @@ struct queue
 	struct node *tail;
 };
 
+/* end type defs */
+
+
+/* Global var declarations */
+static	int64_t	freq	= DEFAULT_FREQ;
+
+static CnetTimerID local_timer;
+static CnetTimerID sendTimer;
+
+struct queue * buf; 
+
+static FRAME* info; //info frame buffer
+static int numFrames;
+static int backoff = 0;
+/* End global vars */
+
+/*queue definitions*/
 int enqueue(struct queue *q, FRAME f)
 {
 	struct node *n = malloc(sizeof(struct node));
@@ -61,11 +79,12 @@ int dequeue(struct queue *q, FRAME *f)
 	if (!q->head) {
 		return -1;
 	}
-	FRAME* frame = q->head->f;
+	FRAME* frame = &(q->head->f);
 	memcpy(f, frame, sizeof(frame));
 	struct node *tmp = q->head;
 	if (q->head == q->tail) {
-		q->head = q->tail = NULL;
+		q->head = NULL;
+		q->tail = NULL;
 	}
 	else
 		q->head = q->head->next;
@@ -75,29 +94,19 @@ int dequeue(struct queue *q, FRAME *f)
 
 void create_queue(struct queue *q)
 {
-	q->head = q->tail = NULL;
+	q->head = NULL;
+	q->tail = NULL;
 }
 /*end of queue definitions*/
 
 
-#define WAITINGTIME (FRAME_HEADER_SIZE + len)/linkinfo[1].bandwidth + linkinfo[1].propagationdelay
-#define	DEFAULT_FREQ 1000000 //(3*FRAME_HEADER_SIZE + MAX_DATAGRAM_SIZE)/linkinfo[1].bandwidth + linkinfo[1].propagationdelay
-
-static	int64_t	freq	= DEFAULT_FREQ;
-#define TIMESLOT 			CNET_rand()%freq + 1
-
-static CnetTimerID timer;
-static CnetTimerID sendTimer;
-
-struct queue * buf; 
-
-static FRAME* info; //info frame buffer
-static int numFrames;
-static int backoff = 0;
 
 /* returns max # of bytes of data that link_send_data or link_send_info
  * will currently accept */
-int get_nbytes_writeable();
+int get_nbytes_writeable() {
+	/* TODO: Use it or lose it - Renee */
+	return 10000000;
+}
 
 void send_frame(FRAMETYPE type, CnetAddr dest, int len, char *data) {
 	FRAME f;
@@ -173,7 +182,7 @@ static EVENT_HANDLER(send) {
 
 static EVENT_HANDLER(timeout) {
 	CnetData numTimeouts = 0; // ok to init to zero? I don't know what's going on here - Renee.
-	if(CNET_timer_data(timer, &numTimeouts) == 0) { 
+	if(CNET_timer_data(local_timer, &numTimeouts) == 0) { 
 		if(numTimeouts > 3) {
 			sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, 0);
 			FRAME* f = malloc(sizeof(FRAME));
@@ -208,7 +217,7 @@ static EVENT_HANDLER(receive) {
 			if(f.dest == nodeinfo.nodenumber) {
 				send_frame(DL_CTS, f.src, 0, NULL);	
 			}
-			timer = CNET_start_timer(EV_TIMER1, WAITINGTIME, 0);
+			local_timer = CNET_start_timer(EV_TIMER1, WAITINGTIME, 0);
 			break;
 		case DL_CTS:
 			if(f.dest == nodeinfo.nodenumber) {
@@ -216,19 +225,19 @@ static EVENT_HANDLER(receive) {
 				dequeue(buf, &next);
 				send_frame(next.type, next.src, next.len, next.msg); //send DATA
 			}
-			timer = CNET_start_timer(EV_TIMER1, WAITINGTIME, 0);
+			local_timer = CNET_start_timer(EV_TIMER1, WAITINGTIME, 0);
 			break;
 		case DL_DATA:
 			if(f.dest == nodeinfo.nodenumber) {
 				net_recv(f.msg, f.len, f.src);
 			}
-			timer = CNET_start_timer(EV_TIMER1, WAITINGTIME, 0);
+			local_timer = CNET_start_timer(EV_TIMER1, WAITINGTIME, 0);
 			break;
 		case DL_ACK:
 			if(f.dest == nodeinfo.nodenumber) {
 				sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, 0);
 			}
-			CNET_stop_timer(timer);
+			CNET_stop_timer(local_timer);
 			break;
 				//schedule next message (or set some state that means we can send)
 	}
