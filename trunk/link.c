@@ -6,6 +6,7 @@
  */
 #include "dtn.h"
 
+/*Frame definitions*/
 typedef enum {DL_DATA, DL_BEACON, DL_RTS, DL_CTS, DL_ACK} FRAMETYPE;
 
 typedef struct {
@@ -23,9 +24,71 @@ typedef struct {
 #define FRAME_HEADER_SIZE (sizeof(FRAME) - sizeof(MSG))
 
 #define FRAME_SIZE(f)	  (FRAME_HEADER_SIZE + f.len)
+/*end of frame definitions*/
+
+/*queue definitions*/
+struct node
+{
+	FRAME f;
+	struct node * next;
+};
+
+struct queue
+{
+	struct node *head;
+	struct node *tail;
+};
+
+int enqueue(struct queue *q, FRAME f)
+{
+	struct node *n = malloc(sizeof(struct node));
+	if (n == NULL) {
+		return -1;
+	}
+	n->f = f;
+	if (q->head == NULL)
+		q->head = q->tail = n;
+	else {
+		q->tail->next = n;
+		q->tail = n;
+	}
+	n->next = NULL;
+	return 0;
+}
+
+int dequeue(struct queue *q, FRAME *f)
+{
+	char* value = 0;
+	if (!q->head) {
+		return -1;
+	}
+	value = q->head->f.msg.data;
+	struct node *tmp = q->head;
+	if (q->head == q->tail) {
+		q->head = q->tail = NULL;
+	}
+	else
+		q->head = q->head->next;
+	free(tmp);
+	return 0;
+}
+
+void create_queue(struct queue *q)
+{
+	q->head = q->tail = NULL;
+}
+
+int delete_queue(struct queue *q)
+{
+	struct queue* tmp = q;
+	free(tmp);
+	return q->head == NULL;
+}
+/*end of queue definitions*/
+
 
 #define WAITINGTIME (FRAME_HEADER_SIZE + len)/linkinfo[1].bandwidth + linkinfo[1].propagationdelay
-#define	DEFAULT_FREQ		(3*FRAME_HEADER_SIZE + MAX_DATAGRAM_SIZE)/linkinfo[1].bandwidth + linkinfo[1].propagationdelay//1000000
+#define	DEFAULT_FREQ 1000000 //(3*FRAME_HEADER_SIZE + MAX_DATAGRAM_SIZE)/linkinfo[1].bandwidth + linkinfo[1].propagationdelay
 
 static	int64_t	freq	= DEFAULT_FREQ;
 #define TIMESLOT 			CNET_rand()%freq + 1
@@ -33,13 +96,8 @@ static	int64_t	freq	= DEFAULT_FREQ;
 static CnetTimerID timer;
 static CnetTimerID sendTimer;
 
-typedef struct {
-	FRAME f;
-	struct FRAMELIST* succ;
-} FRAMELIST;
+struct queue * buf; 
 
-static FRAMELIST* fBuf; //frame buffer
-static FRAMELIST* tail;
 static FRAME info; //info frame buffer
 static int numFrames;
 static int backoff = 0;
@@ -47,33 +105,6 @@ static int backoff = 0;
 /* returns max # of bytes of data that link_send_data or link_send_info
  * will currently accept */
 int get_nbytes_writeable();
-
-void add(FRAMELIST * buf, FRAMELIST * tail, int * numEl, FRAME f) {
-	if(numFrames < BUFSIZ) {
-		if(buf == NULL) {
-				buf = malloc(sizeof(FRAMELIST));
-				buf->f = f;
-				buf->succ = NULL;
-			} else {
-				tail->succ = malloc(sizeof(FRAMELIST));
-				tail = tail->succ;
-				tail->f = f;
-				tail->succ = NULL;
-			}
-			*numEl++;
-	}
-}
-
-/*gets and removes the frame from the front of the queue*/
-FRAME removeHead(FRAMELIST * buf, int * numEl) {
-	FRAME out = buf->f;
-	FRAMELIST* next = buf->succ;
-	FRAMELIST* head = buf;
-	buf = next;
-	free(head);
-	*numEl--;
-	return out;
-}
 
 void send_frame(FRAMETYPE type, CnetAddr dest, int len, char *data) {
 	FRAME f;
@@ -100,7 +131,7 @@ void link_send_data( char * msg, int len, CnetAddr recv) {
 		f.src = nodeinfo.nodenumber;
 		f.len = len;
 		memcpy(f.msg.data, msg, len);
-		add(fBuf, tail, &numFrames, f);
+		enqueue(buf, f);
 }
 
 /* send info msg of length len to receiver recv
@@ -132,11 +163,11 @@ static EVENT_HANDLER(send) {
 		backoff = 0;
 		if((void*)info != NULL) {
 			FRAME b = info;
-			info = (FRAMELIST*)NULL;
+			info = (FRAME*)NULL;
 			send_frame(DL_BEACON, b.dest, b.len, b.msg.data);
 			sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, 0);
 		} else {
-			FRAME f = fBuf->f;
+			FRAME f = buf->head->f;
 			send_frame(DL_RTS, f.dest, 0, NULL);
 		}
 		//send RTS
@@ -148,28 +179,21 @@ static EVENT_HANDLER(send) {
 }
 
 static EVENT_HANDLER(timeout) {
-	/*
-	FRAMETYPE type;
-	if(CNET_timer_data(timer, &type) == 0) {
-		switch(type) {
-			case DL_RTS:
-				sendTimer = CNET_start_timer(EV_TIMER2, 0, 0);
-				break;
-			
-		}
-	}
-	*/
 	int numTimeouts;
 	if(CNET_timer_data(timer, &numTimeouts) == 0) { 
 		if(numTimeouts > 3) {
 			sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, 0);
-			removeHead(fBuf, &numFrames);
+			FRAME* f;
+			dequeue(buf, f);
+			free(f);
 		} else {
 			sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, numTimeouts + 1);
 		}
 	} else {
 		sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, 0);
-		removeHead(fBuf, &numFrames);
+		FRAME* f;
+		dequeue(buf, f);
+		free(f);
 	}
 }
 
@@ -195,7 +219,8 @@ static EVENT_HANDLER(receive) {
 			break;
 		case DL_CTS:
 			if(f.dest == nodeinfo.nodenumber) {
-				FRAME next = removeHead(fBuf, &numFrames);
+				FRAME next;
+				dequeue(buf, &next);
 				send_frame(next.type, next.src, next.len, &next.msg.data); //send DATA
 			}
 			timer = CNET_start_timer(EV_TIMER1, WAITINGTIME, 0);
@@ -225,11 +250,8 @@ void link_init() {
 	CHECK(CNET_set_handler(EV_TIMER2, send, 0));
 	CHECK(CNET_set_handler(EV_FRAMECOLLISION, collision, 0));
 	
-	fBuf = malloc(sizeof(FRAMELIST));
-	fBuf->f = NULL;
-	fBuf->succ = NULL;
-	tail = NULL;
-		
+	create_queue(buf);
+	
 	info = NULL;
 	numFrames = 0;
 }

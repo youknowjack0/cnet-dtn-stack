@@ -38,3 +38,6 @@ void transport_init();
 /* fakeapp.c */
 void generate_message();
 void receive_message(char* data, int len, CnetAddr sender);
+
+
+
