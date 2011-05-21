@@ -24,13 +24,15 @@
 #define MAXNODES 1000
 
 /* structure to represent node and location */
-typedef struct {
+typedef struct 
+{
 	CnetAddr addr;
 	CnetPosition loc;
 } NODELOCATION;
 
 /* the packet structure for oracle information transmission */
-typedef struct {
+typedef struct 
+{
 	uint32_t checksum; /*crc32 checksum of the oraclepacket including 'locations' payload */
 	NODELOCATION senderLocation;
 	uint32_t freeBufferSpace; /* how many bytes of space available in transmitting nodes' public buffer */
@@ -40,7 +42,8 @@ typedef struct {
 
 /* structure to store information about neighbours */
 /* TODO: store distance to this neighbour here to speed up computation */
-typedef struct {
+typedef struct 
+{
 	NODELOCATION nl;
 	uint32_t freeBufferSpace;
 	uint64_t lastBeacon; /* when did we last see a bacon from this noodle */
@@ -50,7 +53,8 @@ typedef struct {
 static Neighbour * positionDB;
 static int dbsize;
 
-static int compareNL(const void * key, const void * elem) {
+static int compareNL(const void * key, const void * elem) 
+{
 	uint32_t k = *((uint32_t *)key);
 	uint32_t addr = (uint32_t)(((Neighbour *)(elem))->nl.addr);
 	return k-addr ;
@@ -61,17 +65,21 @@ static int compareNL(const void * key, const void * elem) {
  * or update the existing position if the address
  * already exists
  */
-static void savePosition(NODELOCATION n) {
+static void savePosition(NODELOCATION n) 
+{
 	CnetAddr * np = &(n.addr);
 	Neighbour * nbp  = bsearch(np, positionDB, dbsize, sizeof(Neighbour), compareNL);
-	if(nbp == NULL) {
+	if(nbp == NULL) 
+	{
 		//append and sort
 		dbsize++;
 		positionDB = realloc(positionDB, sizeof(Neighbour)*dbsize);
 		positionDB[dbsize-1].nl = n;
 		positionDB[dbsize-1].lastBeacon = 0; 
 		qsort(positionDB, dbsize, sizeof(Neighbour), compareNL);
-	} else {
+	} 
+	else 
+	{
 		//update
 		nbp->nl.loc = n.loc;
 	}
@@ -80,17 +88,20 @@ static void savePosition(NODELOCATION n) {
 /* checksum an oracle packet, return the result
  * crc32
  */
-static uint32_t checksum_oracle_packet(OraclePacket * p) {
+static uint32_t checksum_oracle_packet(OraclePacket * p) 
+{
 	/* TODO: might need to deal with struct field offset? */
 	return CNET_crc32((unsigned char*)p + sizeof(p->checksum), sizeof(p) - sizeof(p->locations) + sizeof(NODELOCATION)*p->locationsSize - sizeof(p->checksum));
 }
 
 /* broadcast info about this node and other known nodes
  */
-static void sendOracleBeacon() {
+static void sendOracleBeacon() 
+{
 	/* possible todo: restructure the Neighbour data so that this can be done with one memcpy */
 	OraclePacket p;
-	for(int i=0;i<dbsize;i++) {
+	for(int i=0;i<dbsize;i++) 
+	{
 		p.locations[i] = positionDB[i].nl;
 	}
 	p.freeBufferSpace = get_public_nbytes_free();
@@ -111,12 +122,14 @@ static void sendOracleBeacon() {
 /* process an oracle packet and update local knowledge
  * database
  */
-static void processBeacon(OraclePacket * p) {
-	for(int i=0;i<p->locationsSize;i++) {
+static void processBeacon(OraclePacket * p) 
+{
+	for(int i=0;i<p->locationsSize;i++) 
+	{
 		if((int)p->locations[i].addr != (int)nodeinfo.address) /* if not THIS node */
-		savePosition(p->locations[i]);	
+			savePosition(p->locations[i]);	
 	}
-	
+
 	/* save some near-neighbour specific info */
 	savePosition(p->senderLocation);
 	Neighbour * nbp = bsearch(&(p->senderLocation.addr), positionDB, dbsize, sizeof(Neighbour), compareNL);
@@ -129,11 +142,15 @@ static void processBeacon(OraclePacket * p) {
  * note: location (l) will be set to NULL if there is no
  * last known position for l.
  */
-static void queryPosition(CnetPosition * l, CnetAddr a) {
+static void queryPosition(CnetPosition * l, CnetAddr a) 
+{
 	Neighbour * nbp = bsearch(&a, positionDB, dbsize, sizeof(Neighbour), compareNL);
-	if(nbp==NULL) {
+	if(nbp==NULL) 
+	{
 		l = NULL;
-	} else {
+	} 
+	else 
+	{
 		*l = nbp->nl.loc;
 	}
 }
@@ -142,7 +159,8 @@ static void queryPosition(CnetPosition * l, CnetAddr a) {
  * 	a->c > b->c
  * 	by some interval defined in dtn.h
  */
-bool isCloser(CnetPosition a, CnetPosition b, CnetPosition c, int interval) {
+bool isCloser(CnetPosition a, CnetPosition b, CnetPosition c, int interval) 
+{
 	int cax = c.x - a.x;
 	int cay = c.y - a.y;
 	int cbx = c.x - b.x;
@@ -168,17 +186,21 @@ bool isCloser(CnetPosition a, CnetPosition b, CnetPosition c, int interval) {
  * the BEST node.
  *
  */
-bool get_nth_best_node(CnetAddr * ptr, int n, CnetAddr dest, size_t message_size) {
+bool get_nth_best_node(CnetAddr * ptr, int n, CnetAddr dest, size_t message_size) 
+{
 	CnetTime t = nodeinfo.time_in_usec;
 	if(n!=0) return false;
-	else {
-		for(int i=0; i<dbsize;i++) {
+	else 
+	{
+		for(int i=0; i<dbsize;i++) 
+		{
 			if(t > positionDB[i].lastBeacon + ORACLEWAIT ) continue; /* skip this neighbour if we haven't had a beacon from it recently */ 
 			if((int)positionDB[i].freeBufferSpace < message_size) continue; /* enough buffer space for this massage */
 			CnetPosition destPos; queryPosition(&destPos, dest); 
 			CnetPosition nextPos = positionDB[i].nl.loc;
 			CnetPosition myPos; CNET_get_position(&myPos, NULL);	
-		 	if( isCloser(myPos, nextPos, destPos, MINDIST) ) {
+			if( isCloser(myPos, nextPos, destPos, MINDIST) ) 
+			{
 				*ptr = positionDB[i].nl.addr; 
 				return true; 
 			}
@@ -191,17 +213,20 @@ bool get_nth_best_node(CnetAddr * ptr, int n, CnetAddr dest, size_t message_size
 /* Messages from other nodes which use link_send_info will
  * be passed up to here from the data link layer 
  */
-void oracle_recv(char * msg, int len, CnetAddr rcv) {
+void oracle_recv(char * msg, int len, CnetAddr rcv) 
+{
 	/* parse info from other nodes to estimate topology */
 	OraclePacket * p = (OraclePacket *) msg;
-	if(checksum_oracle_packet(p)==p->checksum) {
+	if(checksum_oracle_packet(p)==p->checksum) 
+	{
 		processBeacon(p);
 	}
 }
 
 /* function is called on program intialisation 
  */
-void oracle_init() {
+void oracle_init() 
+{
 	CNET_srand(nodeinfo.time_of_day.sec + nodeinfo.nodenumber);
 	/* schedule periodic transmission of topology information, or whatever */		
 	CNET_set_handler(EV_TIMER7, sendOracleBeacon, 0);

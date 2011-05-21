@@ -7,6 +7,7 @@
 #define ORACLEINTERVAL 3000000 /* oracle broadcast interval in microseconds */
 #define ORACLEWAIT (ORACLEINTERVAL*2) /* time a neighbour will be 'live' after a beacon */
 #define MINDIST 2
+/* This is the maximum size of the PAYLOAD of a datagram, not the datagram including the header! */
 #define MAX_DATAGRAM_SIZE 50000 /* TODO: max datagram size in bytes */
 #define MAXMESSAGESIZE 48699 /* TODO */
 #define NUM_NODES 10 /* TODO: this needs to be accurate, since fakeapp will use it to choose a dest */
