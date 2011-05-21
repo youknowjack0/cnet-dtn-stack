@@ -56,13 +56,13 @@ int enqueue(struct queue *q, FRAME f)
 	return 0;
 }
 
-// TODO: Whut? Why do we pass it f? What is this meant to be returning?
 int dequeue(struct queue *q, FRAME *f)
 {
 	if (!q->head) {
 		return -1;
 	}
-	//char* value = q->head->f.msg; // What is this for?
+	FRAME* frame = q->head->f;
+	memcpy(f, frame, sizeof(frame));
 	struct node *tmp = q->head;
 	if (q->head == q->tail) {
 		q->head = q->tail = NULL;
@@ -77,13 +77,6 @@ void create_queue(struct queue *q)
 {
 	q->head = q->tail = NULL;
 }
-
-int delete_queue(struct queue *q)
-{
-	struct queue* tmp = q;
-	free(tmp);
-	return q->head == NULL;
-}
 /*end of queue definitions*/
 
 
@@ -93,7 +86,7 @@ int delete_queue(struct queue *q)
 static	int64_t	freq	= DEFAULT_FREQ;
 #define TIMESLOT 			CNET_rand()%freq + 1
 
-//static CnetTimerID timer; TODO: Is it ok that I commented this out? It wasn't used - Renee.
+static CnetTimerID timer;
 static CnetTimerID sendTimer;
 
 struct queue * buf; 
@@ -153,7 +146,6 @@ void link_send_info( char * msg, int len, CnetAddr recv) {
 	f->msg = malloc(len);
 	memcpy(f->msg, msg, len);
 	info = f;
-	//send_frame(DL_BEACON, recv, len, msg);
 }
 
 static EVENT_HANDLER(collision) {
@@ -174,10 +166,6 @@ static EVENT_HANDLER(send) {
 			FRAME f = buf->head->f;
 			send_frame(DL_RTS, f.dest, 0, NULL);
 		}
-		//send RTS
-		//wait for CTS
-		//send data
-		//wait for ack
 //TODO: Free b?
 	}
 	
