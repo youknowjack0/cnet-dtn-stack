@@ -9,11 +9,13 @@
 
 
 /*
- * The datagram structure.
- * This is the header and message that gets sent
- * from the transport layer (this) to the network
- * layer.
- *
+ **************************************************
+ * The datagram structure.			  *
+ * This is the header and message that gets sent  *
+ * from the transport layer (this) to the network *
+ * layer.					  *
+ **************************************************
+* 
  * Data received from the network layer should be
  * of this type.
  *
@@ -39,9 +41,13 @@ typedef struct
 	char msg_frag[MAX_DATAGRAM_SIZE];
 } DATAGRAM;
 
+
 /*
- * STRUCTURES FOR THE QUEUE
+ ****************************
+ * STRUCTURES FOR THE QUEUE *
+ ****************************
  */
+
 /*
  * A structure for the elements of the TRANSQUEUE.
  */
@@ -74,15 +80,16 @@ typedef struct
 } TRANSQUEUE;
 
 /*
- * END QUEUE STRUCTURES
+ ************************
+ * END QUEUE STRUCTURES *
+ ************************
  */
 
 
 /*
- * STRUCTURES FOR THE RED-BLACK BINARY SEARCH TREE
- * This tree is used as a map from keys (concatenation
- * of original source host and message number) to
- * elements in the queue.
+ ***************************************************
+ * STRUCTURES FOR THE RED-BLACK BINARY SEARCH TREE *
+ ***************************************************
  */
 
 /*
@@ -117,12 +124,18 @@ typedef struct
 } RED_BLACK_TREE;
 
 /*
- * END STRUCTURES FOR RED-BLACK TREE
+ *************************************
+ * END STRUCTURES FOR RED-BLACK TREE *
+ *************************************
  */
 
+
 /*
- * GLOBAL VARIABLE DECLARATIONS
+ ********************************
+ * GLOBAL VARIABLE DECLARATIONS *
+ ********************************
  */
+
 /*
  * counter for the serial numbers of messages
  */
@@ -139,23 +152,23 @@ static TRANSQUEUE* buff;
 static RED_BLACK_TREE* tree_map;
 
 /*
- * END GLOBAL VARIABLES
+ * Tracks whether to use right_min or left_max for
+ * deletion from red-black tree
  */
+static bool max_or_min;
 
 /*
- * RED-BLACK TREE FUNCTIONS
+ ************************
+ * END GLOBAL VARIABLES *
+ ************************
  */
 
+
 /*
- * concatenates two ints to make one int
+ ****************************
+ * RED-BLACK TREE FUNCTIONS *
+ ****************************
  */
-static int make_key(int src, int message_num)
-{
-	char* tmp = malloc(50 * sizeof(char));
-	sprintf(tmp, "%d%d", src, message_num);
-	int ret = atoi(tmp);
-	return ret;
-}
 
 /*
  * Make a new red-black tree
@@ -502,33 +515,223 @@ static void tree_add(RED_BLACK_TREE* tree, int key, struct QUEUE_EL* el)
 	}
 }
 
-
-static struct QUEUE_EL* tree_delete_entry(struct RB_TREE_NODE* node, int key)
+/*
+ * Finds the maximum-key element in the left subtree of root
+ */
+static struct RB_TREE_NODE* left_max(struct RB_TREE_NODE* root)
 {
-	// at this stage there is no tree, so nothing to delete!
-	return tree_get_entry(node, key);
+	struct RB_TREE_NODE* max = root->left_child;
+	while(max->right_child->is_leaf == false)
+	{
+		max = max->right_child;
+	}
+	return max;
 }
+
+/*
+ * Finds the minimum-key element in the right subtree of root
+ */
+static struct RB_TREE_NODE* right_min(struct RB_TREE_NODE* root)
+{
+	struct RB_TREE_NODE* min = root->right_child;
+	while(min->left_child->is_leaf == false)
+	{
+		min = min->left_child;
+	}
+	return min;
+}
+
+/*
+ * Finds the sibling of node.
+ */
+/* NOT USED _YET_
+static struct RB_TREE_NODE* get_sibling(struct RB_TREE_NODE* node)
+{
+	if(node == node->parent->left_child)
+	{
+		return node->parent->right_child;
+	}
+	else
+	{
+		return node->parent->left_child;
+	}
+}
+*/
+
+/*
+ * Replace node with child in the tree
+ */
+static void replace(struct RB_TREE_NODE* node, struct RB_TREE_NODE* child)
+{
+	if(node->parent != NULL)
+	{
+		if(node->parent->left_child == node)
+		{
+			node->parent->left_child = child;
+		}
+		else
+		{
+			node->parent->right_child = child;
+		}
+		child->parent = node->parent;
+	}
+
+	if(node->right_child == child)
+	{
+		free(node->left_child);
+	}
+	else
+	{
+		free(node->right_child);
+	}
+}
+
+/*
+static void tree_del_c6(struct RB_TREE_NODE* node)
+{
+}
+
+static void tree_del_c5(struct RB_TREE_NODE* node)
+{
+}
+
+static void tree_del_c4(struct RB_TREE_NODE* node)
+{
+}
+
+static void tree_del_c3(struct RB_TREE_NODE* node)
+{
+}
+
+static void tree_del_c2(struct RB_TREE_NODE* node)
+{
+}
+*/
+static void tree_del_c1(struct RB_TREE_NODE* node)
+{
+}
+
+/*
+ * Deletes the appropriate child from a node that has only
+ * one non-leaf child
+ */
+static void delete_child(struct RB_TREE_NODE* node)
+{
+	struct RB_TREE_NODE* child;
+	if(node->left_child->is_leaf == true)
+	{
+		child = node->right_child;
+	}
+	else
+	{
+		child = node->left_child;
+	}
+	replace(node, child);
+	if(node->col == BLACK)
+	{
+		if(child->col == RED)
+		{
+			child->col = BLACK;
+		}
+		else
+		{
+			tree_del_c1(child);
+		}
+	}
+	free(node);
+}
+
+/*
+ * Deletes a node from the tree
+ */
+static struct QUEUE_EL* tree_delete_entry(struct RB_TREE_NODE* node)
+{
+	struct QUEUE_EL* ret = node->value;
+
+	if((node->left_child->is_leaf == true) || (node->right_child->is_leaf == true))
+	{
+		delete_child(node);
+	}
+	else
+	{
+		struct RB_TREE_NODE* swap;
+		max_or_min = !(max_or_min && true);
+		if(max_or_min == true)
+		{
+			swap = left_max(node);
+		}
+		else
+		{
+			swap = right_min(node);
+		}
+		node->value = swap->value;
+		node->key = swap->key;
+		tree_delete_entry(swap);
+	}
+	return ret;
+}
+
 /*
  * Deletes the entry for the message in the tree and returns
  * the address of the entry for the message in the queue.
  */
 static struct QUEUE_EL* tree_delete(RED_BLACK_TREE* tree, int key)
 {
-	// at this stage there is no tree, so nothing to delete!
-	return tree_delete_entry(tree->root, key);
+	struct RB_TREE_NODE* root = tree->root;
+	struct RB_TREE_NODE* found = NULL;
+	while((root != NULL) && (found == NULL))
+	{
+		if(root->is_leaf == true)
+		{
+			root = NULL;
+		}
+		else if(root->key == key)
+		{
+			found = root;
+		}
+		else if(key < root->key)
+		{
+			root = root->left_child;
+		}
+		else
+		{
+			root = root->right_child;
+		}
+	}
+	if(found != NULL)
+	{
+		return tree_delete_entry(found);
+	}
+	else 
+	{
+		return NULL;
+	}
 }
+
 /*
- * End search tree functions
- */
-/*
- * END RED-BLACK TREE FUNCTIONS
+ ********************************
+ * END RED-BLACK TREE FUNCTIONS *
+ ********************************
  */
 
 
 
 /* 
- * QUEUE FUNCTIONS
+ *******************
+ * QUEUE FUNCTIONS *
+ *******************
  */
+
+/*
+ * concatenates two ints to make one int
+ */
+static int make_key(int src, int message_num)
+{
+	char* tmp = malloc(50 * sizeof(char));
+	sprintf(tmp, "%d%d", src, message_num);
+	int ret = atoi(tmp);
+	return ret;
+}
 
 /*
  * returns a pointer to a new, empty TRANSQUEUE
@@ -573,8 +776,9 @@ static bool enqueue(TRANSQUEUE* q, DATAGRAM* dat)
 	if(el == NULL)
 	{
 		el = malloc(sizeof(struct QUEUE_EL));
-		// just make each array element a full sized datagram. Not
-		// worth worrying about.
+		/*
+		 *  Just make each array element a full sized datagram
+		 */
 		el->frags = malloc((dat->frag_count) * sizeof(DATAGRAM));
 		el->num_frags_needed = dat->frag_count;
 		el->num_frags_gotten = 0;
@@ -649,7 +853,9 @@ static DATAGRAM* queue_delete(TRANSQUEUE* q, int src, int message_num)
 	}
 }
 /*
- * END QUEUE FUNCITONS
+ ***********************
+ * END QUEUE FUNCITONS *
+ ***********************
  */
 
 static int comp(const void* one, const void* two)
@@ -689,15 +895,21 @@ static int comp(const void* one, const void* two)
 void transport_recv(char * msg, int len, CnetAddr sender) 
 {
 	DATAGRAM * d = (DATAGRAM*) msg;
-	/* check length*/
+	/* 
+	 * Check length
+	 */
 	if(len != (d->msg_size + sizeof(DATAGRAM) - MAX_DATAGRAM_SIZE))
-		return; /* lengths don't match */
+		return; 
 
-	/* check integrity */
+	/* 
+	 * Check integrity 
+	 */
 	int sum = CNET_crc32((unsigned char *)(d) + offsetof(DATAGRAM, msg_size), len - sizeof(d->checksum));
-	if(sum != d->checksum) return; /* bad checksum */
+	if(sum != d->checksum) return; 
 
-	/* pass up */
+	/* 
+	 * Pass up 
+	 */
 	if(d->frag_count == 1)
 	{
 		receive_message(d->msg_frag, d->msg_size, sender);
@@ -810,16 +1022,22 @@ void transport_datagram(char* msg, int len, CnetAddr destination)
 	}
 }
 
-/* called on node init */
+/*
+ * called on node init 
+ */
 void transport_init() 
 {
-	/* register handler for application layer events if required*/
+	/* 
+	 * register handler for application layer events if required
+	 */
 	msg_num_counter = 0;	
 	buff = new_queue();
 	tree_map = new_red_black_tree();
+	max_or_min = false;
 }
 
 /* 
  * TODO: Check for mem leaks.
  * TODO: Implement limited buffer! 
+ * TODO: Fix hash defined maximum sizes so that things add up.
  */
