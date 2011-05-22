@@ -112,11 +112,12 @@ void create_queue(struct queue* q)
 
 /* returns max # of bytes of data that link_send_data or link_send_info
  * will currently accept */
+/* NOT USED
 int get_nbytes_writeable() 
 {
-	/* TODO: Use it or lose it - Renee */
 	return 10000000;
 }
+*/
 
 void send_frame(FRAMETYPE type, CnetAddr dest, int len, char* data) 
 {
@@ -188,13 +189,13 @@ static EVENT_HANDLER(send)
 			info = NULL;
 			send_frame(DL_BEACON, b->dest, b->len, b->msg);
 			sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, 0);
+			free(b);
 		}
 		else 
 		{
 			FRAME f = buf->head->f;
 			send_frame(DL_RTS, f.dest, 0, NULL);
 		}
-		//TODO: Free b?
 	}
 
 }
@@ -251,6 +252,7 @@ static EVENT_HANDLER(receive)
 		case DL_CTS:
 			if(f.dest == nodeinfo.nodenumber) 
 			{
+				CNET_stop_timer(local_timer);
 				FRAME next;
 				dequeue(buf, &next);
 				send_frame(next.type, next.src, next.len, next.msg); //send DATA
@@ -260,6 +262,7 @@ static EVENT_HANDLER(receive)
 		case DL_DATA:
 			if(f.dest == nodeinfo.nodenumber) 
 			{
+				CNET_stop_timer(local_timer);
 				net_recv(f.msg, f.len, f.src);
 			}
 			local_timer = CNET_start_timer(EV_TIMER1, WAITINGTIME, 0);
