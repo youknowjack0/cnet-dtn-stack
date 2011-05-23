@@ -97,7 +97,7 @@ static PACKET* dequeue(STACK* s)
 		s->bottom = s->bottom->up;
 		free(s->bottom->down);
 		s->bottom->down = NULL;
-		free_bytes += (sizeof(struct STACK_EL) + sizeof(PACKET) - MAX_DATAGRAM_SIZE + tmp->len);
+		free_bytes += (sizeof(struct STACK_EL) + PACKET_HEADER_SIZE + tmp->len);
 		return tmp;
 	}
 }
@@ -107,7 +107,7 @@ static PACKET* dequeue(STACK* s)
  */
 static void push(STACK* s, PACKET* pack) 
 {
-	int mem_used = (sizeof(struct STACK_EL) + sizeof(PACKET) - MAX_DATAGRAM_SIZE + pack->len);
+	int mem_used = (sizeof(struct STACK_EL) + PACKET_HEADER_SIZE + pack->len);
 
 	while(get_public_nbytes_free() < mem_used) 
 	{
@@ -139,7 +139,7 @@ static PACKET* pop(STACK* s)
 		s->top = s->top->down;
 		free(s->top->up);
 		s->top->up = NULL;
-		free_bytes += (sizeof(struct STACK_EL) + sizeof(PACKET) - MAX_DATAGRAM_SIZE + tmp->len);
+		free_bytes += (sizeof(struct STACK_EL) + PACKET_HEADER_SIZE + tmp->len);
 		return tmp;
 	}
 }
@@ -171,7 +171,7 @@ static PACKET* pop(STACK* s)
  */
 static void try_to_send(PACKET* pack, STACK* s) 
 {
-	int mem_used = sizeof(PACKET) - MAX_DATAGRAM_SIZE + pack->len;
+	int mem_used = PACKET_HEADER_SIZE + pack->len;
 	CnetAddr* add_p = NULL;
 	bool can_send = get_nth_best_node(add_p, 0, pack->dest, mem_used);
 
@@ -214,7 +214,7 @@ bool net_send(char* msg, int len, CnetAddr dst)
 	 *
 	 */
 
-	int mem_used = sizeof(PACKET) - MAX_DATAGRAM_SIZE + len;
+	int mem_used = PACKET_HEADER_SIZE + len;
 	PACKET* pack = malloc(mem_used);
 	pack->source = nodeinfo.nodenumber;
 	pack->dest = dst;
