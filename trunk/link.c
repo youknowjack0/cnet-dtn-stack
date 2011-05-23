@@ -47,6 +47,7 @@ static CnetTimerID sendTimer;
 struct queue* buf; 
 
 static FRAME* info; //info frame buffer
+bool sent_info = false;
 static int numFrames;
 static int backoff = 0;
 /* End global vars */
@@ -56,10 +57,6 @@ int enqueue(struct queue* q, FRAME f)
 {
 	/* TODO: whut? there is no way n can be null here */
 	struct node* n = malloc(sizeof(struct node));
-	if (n == NULL) 
-	{
-		return -1;
-	}
 	n->f = f;
 	if (q->head == NULL)
 		q->head = q->tail = n;
@@ -100,7 +97,6 @@ void create_queue(struct queue* q)
 /*end of queue definitions*/
 
 
-
 /* returns max # of bytes of data that link_send_data or link_send_info
  * will currently accept */
 /* NOT USED
@@ -124,7 +120,7 @@ void send_frame(FRAMETYPE type, CnetAddr dest, int len, char* data)
 
 	size_t msglen = FRAME_HEADER_SIZE + len; // TODO: check that this is the correct size!! I just made this up - Renee.
 	//send frame over cnet
-	CHECK(CNET_write_physical(1, f, &msglen));
+	CHECK(CNET_write_physical_reliable(1, f, &msglen));
 }
 
 /* send data msg of length len to receiver recv 
@@ -150,6 +146,7 @@ void link_send_data( char* msg, int len, CnetAddr recv)
  */
 void link_send_info( char* msg, int len, CnetAddr recv) 
 {
+	free(info);
 	FRAME* f = malloc(FRAME_HEADER_SIZE + len);
 	f->type = DL_DATA;
 	f->dest = recv;
@@ -157,6 +154,7 @@ void link_send_info( char* msg, int len, CnetAddr recv)
 	f->len = len;
 	memcpy(f->msg, msg, len);
 	info = f;
+	sent_info = false;
 }
 
 static EVENT_HANDLER(collision) 
@@ -171,21 +169,19 @@ static EVENT_HANDLER(send)
 	if(CNET_carrier_sense(1)==0) 
 	{
 		backoff = 0;
-		if(info != NULL) 
+		if(sent_info != true) 
 		{
-			FRAME* b = info;
-			info = NULL;
-			send_frame(DL_BEACON, b->dest, b->len, b->msg);
-			sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, 0);
-			free(b);
+			send_frame(DL_BEACON, info->dest, info->len, info->msg);
+			sent_info = true;
+			//sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, 0);
 		}
-		else 
+		else if(!buf->head)
 		{
 			FRAME f = buf->head->f;
 			send_frame(DL_RTS, f.dest, 0, NULL);
 		}
 	}
-
+	sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, 0);
 }
 
 static EVENT_HANDLER(timeout) 
@@ -232,7 +228,8 @@ static EVENT_HANDLER(receive)
 	switch(f.type) 
 	{
 		case DL_BEACON:
-			oracle_recv(f.msg, f.len, f.src);
+			printf("Beacon from: %d\n",f.src);
+			//oracle_recv(f.msg, f.len, f.src);
 			break;
 		case DL_RTS:
 			if(f.dest == nodeinfo.nodenumber) 
@@ -255,7 +252,8 @@ static EVENT_HANDLER(receive)
 			if(f.dest == nodeinfo.nodenumber) 
 			{
 				CNET_stop_timer(local_timer);
-				net_recv(f.msg, f.len, f.src);
+				printf("Recevied from: %d\n",f.src);
+				//net_recv(f.msg, f.len, f.src);
 			}
 			local_timer = CNET_start_timer(EV_TIMER1, WAITINGTIME, 0);
 			break;
@@ -280,11 +278,41 @@ void link_init()
 	CHECK(CNET_set_handler(EV_TIMER2, send, 0));
 	CHECK(CNET_set_handler(EV_FRAMECOLLISION, collision, 0));
 
+	buf = malloc(sizeof(struct queue));
 	create_queue(buf);
 
 	info = NULL;
 	numFrames = 0;
 }
+
+EVENT_HANDLER(generate)
+{
+	int newDest;
+	do {
+				newDest	= CNET_rand() % NNODES;
+	} while(newDest == nodeinfo.nodenumber);
+	//myDest = frame.header.dest;
+	char* nextPayload = malloc(MAX_PACKET_SIZE);
+	sprintf(nextPayload, "hello from %d", nodeinfo.nodenumber);
+	link_send_data(nextPayload, MAX_PACKET_SIZE, newDest);
+	CNET_start_timer(EV_TIMER3, 1000000 + CNET_rand()%freq, 0);
+}
+
+EVENT_HANDLER(reboot_node)
+{
+	link_init();
+	CHECK(CNET_set_handler(EV_TIMER3, generate, 0));
+	CNET_start_timer(EV_TIMER3, 1000000 + CNET_rand()%freq, 0);
+	sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, 0);
+}
+
+/*
+int main(int argc, char* argv[])
+{
+	link_init();
+	
+}
+*/
 
 /** RECEIVED DATA **/
 
