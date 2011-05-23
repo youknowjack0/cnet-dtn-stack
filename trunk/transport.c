@@ -7,6 +7,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define TRANSPORT_BUFF_SIZE 1000000
+
 /*
  **************************************************
  * The datagram structure.			  *
@@ -54,7 +56,7 @@ struct QUEUE_EL
 {
 	int num_frags_needed;
 	int num_frags_gotten;
-	int key;
+	long long int key;
 	DATAGRAM* frags;
 	struct QUEUE_EL* down;
 	struct QUEUE_EL* up;
@@ -108,7 +110,7 @@ struct RB_TREE_NODE
 	struct RB_TREE_NODE* parent;
 	struct RB_TREE_NODE* left_child;
 	struct RB_TREE_NODE* right_child;
-	int key;
+	long long int key;
 	struct QUEUE_EL* value;
 	RED_OR_BLACK col;
 	bool is_leaf;
@@ -139,6 +141,11 @@ typedef struct
  * counter for the serial numbers of messages
  */
 static int msg_num_counter;
+
+/*
+ * Available buffer space in bytes
+ */
+static int free_bytes;
 
 /*
  * The layer's buffer
@@ -175,6 +182,7 @@ static bool max_or_min;
 static RED_BLACK_TREE* new_red_black_tree()
 {
 	RED_BLACK_TREE* t = malloc(sizeof(RED_BLACK_TREE));
+	free_bytes -= sizeof(RED_BLACK_TREE);
 	t->root = NULL;
 	return t;
 }
@@ -183,7 +191,7 @@ static RED_BLACK_TREE* new_red_black_tree()
  * Looks up the adress of the entry for the message in the
  * queue
  */
-static struct QUEUE_EL* tree_get_entry(struct RB_TREE_NODE* node, int key)
+static struct QUEUE_EL* tree_get_entry(struct RB_TREE_NODE* node, long long key)
 {
 	if(node == NULL)
 	{
@@ -211,7 +219,7 @@ static struct QUEUE_EL* tree_get_entry(struct RB_TREE_NODE* node, int key)
  * Looks up the adress of the entry for the message in the
  * queue
  */
-static struct QUEUE_EL* tree_get(RED_BLACK_TREE* tree, int key)
+static struct QUEUE_EL* tree_get(RED_BLACK_TREE* tree, long long int key)
 {
 	return tree_get_entry(tree->root, key);
 }
@@ -220,7 +228,7 @@ static struct QUEUE_EL* tree_get(RED_BLACK_TREE* tree, int key)
  * return true if there is an entry in the buffer for the
  * message, else return false.
  */
-static bool tree_has_entry(RED_BLACK_TREE* tree, int key)
+static bool tree_has_entry(RED_BLACK_TREE* tree, long long int key)
 {
 	return (tree_get(tree, key) != NULL);
 }
@@ -447,7 +455,7 @@ static void make_leaf(struct RB_TREE_NODE* l)
 /*
  * makes a new node to be insterted into the tree
  */
-static void new_tree_node(int key, struct QUEUE_EL* el, struct RB_TREE_NODE* new)
+static void new_tree_node(long long int key, struct QUEUE_EL* el, struct RB_TREE_NODE* new)
 {
 	new->parent = NULL;
 	new->key = key;
@@ -473,13 +481,14 @@ static void new_tree_node(int key, struct QUEUE_EL* el, struct RB_TREE_NODE* new
  * insert at a leaf node, which means that there are no
  * children to be redirected.
  */
-static void tree_add_entry(struct RB_TREE_NODE** root, int key, struct QUEUE_EL* el)
+static void tree_add_entry(struct RB_TREE_NODE** root, long long int key, struct QUEUE_EL* el)
 {
 
 	if(*root == NULL)
 	{
 		struct RB_TREE_NODE* new = malloc(sizeof(struct RB_TREE_NODE));
 		new_tree_node(key, el, new);
+		free_bytes -= (3 * sizeof(struct RB_TREE_NODE));
 
 		*root = new;
 		tree_add_c1(*root);
@@ -489,7 +498,9 @@ static void tree_add_entry(struct RB_TREE_NODE** root, int key, struct QUEUE_EL*
 		struct RB_TREE_NODE* new = malloc(sizeof(struct RB_TREE_NODE));
 		new_tree_node(key, el, new);
 		new->parent = (*root)->parent;
+		free_bytes -= (2 * sizeof(struct RB_TREE_NODE));
 		free(*root);
+		/* the pointer in the parent is redirected */
 		*root = new;
 		tree_add_c1(*root);
 	}
@@ -506,7 +517,7 @@ static void tree_add_entry(struct RB_TREE_NODE** root, int key, struct QUEUE_EL*
 /*
  * Adds an entry to the tree
  */
-static void tree_add(RED_BLACK_TREE* tree, int key, struct QUEUE_EL* el)
+static void tree_add(RED_BLACK_TREE* tree, long long int key, struct QUEUE_EL* el)
 {
 	if(tree_has_entry(tree, key) == false)
 	{
@@ -560,6 +571,10 @@ static struct RB_TREE_NODE* get_sibling(struct RB_TREE_NODE* node)
  */
 static void replace(struct RB_TREE_NODE* node, struct RB_TREE_NODE* child)
 {
+	/*
+	 * Replace the reference to node in its parent with a
+	 * reference to child
+	 */
 	if(node->parent != NULL)
 	{
 		if(node->parent->left_child == node)
@@ -573,6 +588,10 @@ static void replace(struct RB_TREE_NODE* node, struct RB_TREE_NODE* child)
 		child->parent = node->parent;
 	}
 
+	/*
+	 * Free the unused child (a leaf by definition). 
+	 * This might cause problems but I doubt it.
+	 */
 	if(node->right_child == child)
 	{
 		free(node->left_child);
@@ -581,6 +600,7 @@ static void replace(struct RB_TREE_NODE* node, struct RB_TREE_NODE* child)
 	{
 		free(node->right_child);
 	}
+	free_bytes += sizeof(struct RB_TREE_NODE);
 }
 
 static void tree_del_c1(struct RB_TREE_NODE*);
@@ -721,6 +741,7 @@ static void delete_child(struct RB_TREE_NODE* node)
 			tree_del_c1(child);
 		}
 	}
+	free_bytes += sizeof(struct RB_TREE_NODE);
 	free(node);
 }
 
@@ -758,7 +779,7 @@ static struct QUEUE_EL* tree_delete_entry(struct RB_TREE_NODE* node)
  * Deletes the entry for the message in the tree and returns
  * the address of the entry for the message in the queue.
  */
-static struct QUEUE_EL* tree_delete(RED_BLACK_TREE* tree, int key)
+static struct QUEUE_EL* tree_delete(RED_BLACK_TREE* tree, long long int key)
 {
 	struct RB_TREE_NODE* root = tree->root;
 	struct RB_TREE_NODE* found = NULL;
@@ -808,11 +829,11 @@ static struct QUEUE_EL* tree_delete(RED_BLACK_TREE* tree, int key)
 /*
  * concatenates two ints to make one int
  */
-static int make_key(int src, int message_num)
+static long long int make_key(int src, int message_num)
 {
 	char* tmp = malloc(50 * sizeof(char));
-	sprintf(tmp, "%d%d", src, message_num);
-	int ret = atoi(tmp);
+	sprintf(tmp, "%d%d", src * 10000, message_num);
+	long long int ret = atoll(tmp);
 	return ret;
 }
 
@@ -822,7 +843,9 @@ static int make_key(int src, int message_num)
 static TRANSQUEUE* new_queue()
 {
 	TRANSQUEUE* q = malloc(sizeof(TRANSQUEUE));
+	free_bytes -= sizeof(TRANSQUEUE);
 	struct QUEUE_EL* el = malloc(sizeof(struct QUEUE_EL));
+	free_bytes -= sizeof(struct QUEUE_EL);
 	el->num_frags_needed = 0;
 	el->num_frags_gotten = 0;
 	el->key = 0;
@@ -837,12 +860,41 @@ static TRANSQUEUE* new_queue()
 /*
  * Returns true if the queue is empty
  */
-/* NOT USED _YET_
    static bool is_empty(TRANSQUEUE* q)
    {
    return ((q->top->down == NULL) || (q->bottom->up == NULL));
    }
+
+/*
+ * Removes the element at the front of the queue. Returns the
+ * array of datagrams so that the entry for this message in the
+ * binary search TREE can be REMOVED(!) (currently done internally).
+ * This should (probably) only be used for dropping messages when
+ * the buffer is full. Otherwise use delete().
+ *
+ * NOTE: On dropping messages, we may want to check that the new
+ * datagram that overflows the buffer is not the datagram that
+ * will complete the message we would normally drop, as that
+ * would be an unneccessary waste.
  */
+static DATAGRAM* dequeue(TRANSQUEUE* q)
+{
+	if(is_empty(q))
+	{
+		return NULL;
+	}
+	else
+	{
+		DATAGRAM* d = q->bottom->frags;
+		tree_delete(tree_map, q->bottom->key);
+		q->bottom = q->bottom->up;
+		free(q->bottom->down);
+		q->bottom->down = NULL;
+		free_bytes += sizeof(struct QUEUE_EL);
+		free_bytes += (d->frag_count * sizeof(DATAGRAM));
+		return d;
+	}
+}
 
 /*
  * Put a datagram on the buffer. If it's not part of a message that
@@ -859,10 +911,16 @@ static bool enqueue(TRANSQUEUE* q, DATAGRAM* dat)
 	if(el == NULL)
 	{
 		el = malloc(sizeof(struct QUEUE_EL));
-		/*
-		 *  Just make each array element a full sized datagram
-		 */
 		el->frags = malloc((dat->frag_count) * sizeof(DATAGRAM));
+		tree_add(tree_map, key, el);
+
+		int bytes_used = sizeof(struct QUEUE_EL) +  (dat->frag_count * sizeof(DATAGRAM));
+		while(free_bytes < bytes_used)
+		{
+			dequeue(q);
+		}
+		free_bytes -= bytes_used;
+
 		el->num_frags_needed = dat->frag_count;
 		el->num_frags_gotten = 0;
 		el->key = make_key(dat->source, dat->msg_num);
@@ -871,43 +929,12 @@ static bool enqueue(TRANSQUEUE* q, DATAGRAM* dat)
 		el->up = NULL;
 		q->top->up = el;
 		q->top = el;
-		tree_add(tree_map, key, el);
 	}
 
 	memcpy(el->frags + el->num_frags_gotten++, dat, DATAGRAM_HEADER_SIZE + dat->msg_size);
 	return (el->num_frags_gotten == el->num_frags_needed);
 }
 
-/*
- * Removes the element at the front of the queue. Returns the
- * array of datagrams so that the entry for this message in the
- * binary search TREE can be REMOVED(!) (currently done internally).
- * This should (probably) only be used for dropping messages when
- * the buffer is full. Otherwise use delete().
- *
- * NOTE: On dropping messages, we may want to check that the new
- * datagram that overflows the buffer is not the datagram that
- * will complete the message we would normally drop, as that
- * would be an unneccessary waste.
- */
-/* NOT USED _YET_
-   static DATAGRAM* dequeue(TRANSQUEUE* q)
-   {
-   if(is_empty(q))
-   {
-   return NULL;
-   }
-   else
-   {
-   DATAGRAM* d = q->bottom->frags;
-   tree_delete(tree_map, q->bottom->key);
-   q->bottom = q->bottom->up;
-   free(q->bottom->down);
-   q->bottom->down = NULL;
-   return d;
-   }
-   }
- */
 
 /*
  * Finds the queue entry for a given message (identified by src
@@ -930,6 +957,7 @@ static DATAGRAM* queue_delete(TRANSQUEUE* q, int src, int message_num)
 			temp->up->down = temp->down;
 		}
 
+		free_bytes += (sizeof(struct QUEUE_EL) + (temp->num_frags_needed * sizeof(DATAGRAM)));
 		DATAGRAM* ret = temp->frags;
 		free(temp);
 		return ret;
@@ -1009,17 +1037,22 @@ void transport_recv(char* msg, int len, CnetAddr sender)
 			qsort(frags, d->frag_count, sizeof(DATAGRAM), comp); 
 			int num_frags = d->frag_count;
 			char* built_msg = malloc(num_frags * MAX_FRAGMENT_SIZE * sizeof(char));
+			int built_msg_size = 0;
 			for(int i = 1; i <= num_frags; i++)
 			{
 				if(i == num_frags)
 				{
 					memcpy(built_msg + ((i - 1) * MAX_FRAGMENT_SIZE), frags[i - 1].msg_frag, frags[i - 1].msg_size);
+					built_msg_size += frags[i - 1].msg_size;
 				}
 				else
 				{
 					memcpy(built_msg + ((i - 1) * MAX_FRAGMENT_SIZE), frags[i - 1].msg_frag, MAX_FRAGMENT_SIZE);
+					built_msg_size += MAX_FRAGMENT_SIZE;
 				}
 			}
+			receive_message(built_msg, built_msg_size, sender);
+			free(built_msg);
 			free(frags);
 		}
 
@@ -1048,6 +1081,9 @@ void transport_datagram(char* msg, int len, CnetAddr destination)
 	int msg_num = ++msg_num_counter;
 	int frag_num = 0;
 
+	/*
+	 * Break the message into fragments
+	 */
 	for(int i = 1; i <= num_frags_needed; i++) 
 	{
 		/*
@@ -1059,6 +1095,9 @@ void transport_datagram(char* msg, int len, CnetAddr destination)
 			if (remainder == 0)
 				remainder = MAX_FRAGMENT_SIZE;
 
+			/*
+			 * Make a new datagram
+			 */
 			DATAGRAM* d = malloc(DATAGRAM_HEADER_SIZE + remainder); 
 
 			d->msg_size = remainder;
@@ -1072,9 +1111,15 @@ void transport_datagram(char* msg, int len, CnetAddr destination)
 			 */
 			memcpy(d->msg_frag, msg + ((i - 1) * MAX_FRAGMENT_SIZE), remainder);
 
+			/*
+			 * Set the checksum
+			 */
 			d->checksum = CNET_crc32(((unsigned char *) d) + offsetof(DATAGRAM, msg_size), 
 					sizeof(DATAGRAM) - sizeof(d->checksum) - MAX_FRAGMENT_SIZE + remainder); 
 
+			/*
+			 * Send it and free the memory
+			 */
 			net_send(((char*) d), DATAGRAM_HEADER_SIZE + remainder, destination);
 			free(d);
 		}
@@ -1083,6 +1128,9 @@ void transport_datagram(char* msg, int len, CnetAddr destination)
 		 */
 		else 
 		{
+			/*
+			 * Make a new datagram
+			 */
 			DATAGRAM* d = malloc(sizeof(DATAGRAM));
 
 			d->msg_size = MAX_FRAGMENT_SIZE;
@@ -1096,9 +1144,15 @@ void transport_datagram(char* msg, int len, CnetAddr destination)
 			 */
 			memcpy(d->msg_frag, msg + ((i - 1) * MAX_FRAGMENT_SIZE), MAX_FRAGMENT_SIZE);
 
+			/*
+			 * Set the checksum
+			 */
 			d->checksum = CNET_crc32(((unsigned char *) d) + offsetof(DATAGRAM, msg_size), 
 					sizeof(DATAGRAM) - sizeof(d->checksum)); 
 
+			/*
+			 * Send it and free the memory
+			 */
 			net_send(((char*)d), sizeof(DATAGRAM), destination);
 			free(d);
 		}
@@ -1114,12 +1168,12 @@ void transport_init()
 	 * register handler for application layer events if required
 	 */
 	msg_num_counter = 0;	
+	free_bytes = TRANSPORT_BUFF_SIZE;
 	buff = new_queue();
 	tree_map = new_red_black_tree();
 	max_or_min = false;
 }
 
 /* 
- * TODO: Check for mem leaks.
  * TODO: Implement limited buffer! 
  */

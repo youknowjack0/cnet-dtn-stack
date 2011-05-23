@@ -14,7 +14,7 @@
 #include "dtn.h"
 
 /* The size of the buffer for this layer */
-#define BUFF_SIZE 1000000
+#define NETWORK_BUFF_SIZE 1000000
 
 
 /* 
@@ -316,6 +316,6 @@ void net_send_buffered()
  */
 void net_init() 
 {
-	free_bytes = BUFF_SIZE;
+	free_bytes = NETWORK_BUFF_SIZE;
 	buff = 	new_stack();
 }
