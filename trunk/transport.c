@@ -171,6 +171,15 @@ static bool max_or_min;
 
 
 /*
+ ***************************************
+ * DECLARATIONS FOR DEPENDENCY REASONS *
+ ***************************************
+ */
+static void tree_add_c1(struct RB_TREE_NODE*);
+
+static DATAGRAM* dequeue(TRANSQUEUE*);
+
+/*
  ****************************
  * RED-BLACK TREE FUNCTIONS *
  ****************************
@@ -329,11 +338,6 @@ static void rotate_right(struct RB_TREE_NODE* root)
 }
 
 /*
- * Declaration for dependency reasons. Defined a bit further down.
- */
-static void tree_add_c1(struct RB_TREE_NODE*);
-
-/*
  * If inserting under a red parent that has a black sibling
  */
 static void tree_add_c5(struct RB_TREE_NODE* node)
@@ -481,11 +485,15 @@ static void new_tree_node(long long int key, struct QUEUE_EL* el, struct RB_TREE
  * insert at a leaf node, which means that there are no
  * children to be redirected.
  */
-static void tree_add_entry(struct RB_TREE_NODE** root, long long int key, struct QUEUE_EL* el)
+static void tree_add_entry(struct RB_TREE_NODE** root, TRANSQUEUE* q, long long int key, struct QUEUE_EL* el)
 {
 
 	if(*root == NULL)
 	{
+		if(free_bytes < (3 * sizeof(struct RB_TREE_NODE)))
+		{
+			dequeue(q);
+		}
 		struct RB_TREE_NODE* new = malloc(sizeof(struct RB_TREE_NODE));
 		new_tree_node(key, el, new);
 		free_bytes -= (3 * sizeof(struct RB_TREE_NODE));
@@ -495,6 +503,10 @@ static void tree_add_entry(struct RB_TREE_NODE** root, long long int key, struct
 	}
 	else if((*root)->is_leaf == true)
 	{
+		if(free_bytes < (3 * sizeof(struct RB_TREE_NODE)))
+		{
+			dequeue(q);
+		}
 		struct RB_TREE_NODE* new = malloc(sizeof(struct RB_TREE_NODE));
 		new_tree_node(key, el, new);
 		new->parent = (*root)->parent;
@@ -506,22 +518,22 @@ static void tree_add_entry(struct RB_TREE_NODE** root, long long int key, struct
 	}
 	else if(key < (*root)->key)
 	{
-		tree_add_entry(&((*root)->left_child), key, el);
+		tree_add_entry(&((*root)->left_child), q, key, el);
 	}
 	else if(key > (*root)->key)
 	{
-		tree_add_entry(&((*root)->right_child), key, el);
+		tree_add_entry(&((*root)->right_child), q, key, el);
 	}
 }
 
 /*
  * Adds an entry to the tree
  */
-static void tree_add(RED_BLACK_TREE* tree, long long int key, struct QUEUE_EL* el)
+static void tree_add(RED_BLACK_TREE* tree, TRANSQUEUE* q, long long int key, struct QUEUE_EL* el)
 {
 	if(tree_has_entry(tree, key) == false)
 	{
-		tree_add_entry(&(tree->root), key, el);
+		tree_add_entry(&(tree->root), q, key, el);
 	}
 }
 
@@ -912,7 +924,7 @@ static bool enqueue(TRANSQUEUE* q, DATAGRAM* dat)
 	{
 		el = malloc(sizeof(struct QUEUE_EL));
 		el->frags = malloc((dat->frag_count) * sizeof(DATAGRAM));
-		tree_add(tree_map, key, el);
+		tree_add(tree_map, q, key, el);
 
 		int bytes_used = sizeof(struct QUEUE_EL) +  (dat->frag_count * sizeof(DATAGRAM));
 		while(free_bytes < bytes_used)
