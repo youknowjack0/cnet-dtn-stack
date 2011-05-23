@@ -8,12 +8,34 @@
 #define ORACLEWAIT (ORACLEINTERVAL*2) /* time a neighbour will be 'live' after a beacon */
 #define MINDIST 2
 /* This is the maximum size of the PAYLOAD of a datagram, not the datagram including the header! */
-#define MAX_DATAGRAM_SIZE 50000 /* TODO: max datagram size in bytes */
-#define MAXMESSAGESIZE 48699 /* TODO */
-#define NUM_NODES 10 /* TODO: this needs to be accurate, since fakeapp will use it to choose a dest */
+
+#define MAXMESSAGESIZE 100000 /* TODO: This is just for use by the fakeapp. It's arbitrary and meaningless */
+#define MAX_FRAME_SIZE 10000 /* TODO: What is this actually? All other max sizes are based on this. */
+
+/* These are used by the link layer. */
+#define FRAME_HEADER_SIZE (sizeof(FRAMETYPE) + (2 * sizeof(int)) + sizeof(size_t))
+#define MAX_PACKET_SIZE (MAX_FRAME_SIZE - FRAME_HEADER_SIZE)
+
+/* These are used by the network layer */
+#define PACKET_HEADER_SIZE ((2 * sizeof(CnetAddr)) + sizeof(int))
+#define MAX_DATAGRAM_SIZE (MAX_PACKET_SIZE - PACKET_HEADER_SIZE) 
+
+/* These are used by the transport layer */
+#define DATAGRAM_HEADER_SIZE ((2 * sizeof(uint32_t)) + (4 * sizeof(int)))
+#define MAX_FRAGMENT_SIZE (MAX_DATAGRAM_SIZE - DATAGRAM_HEADER_SIZE)
+
+/* TODO: this needs to go! */
+#define NUM_NODES 10 
+
 #define LOGDIR "./dtnlog"
 
 /* link.c */
+/* I don't know how to do a prototype of an enum, so I just moved the whole thing here */
+typedef enum 
+{
+	DL_DATA, DL_BEACON, DL_RTS, DL_CTS, DL_ACK
+} FRAMETYPE;
+
 int get_nbytes_writeable();
 void link_send_data( char * msg, int len, CnetAddr recv);
 void link_send_info( char * msg, int len, CnetAddr recv);

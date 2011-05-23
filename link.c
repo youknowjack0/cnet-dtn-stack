@@ -7,21 +7,11 @@
 #include "dtn.h"
 
 #define TIMESLOT 			CNET_rand()%freq + 1
-#define FRAME_HEADER_SIZE (sizeof(FRAME) - sizeof(MSG))
-#define FRAME_SIZE(f)	  (FRAME_HEADER_SIZE + f.len)
+
 #define WAITINGTIME (FRAME_HEADER_SIZE + len)/linkinfo[1].bandwidth + linkinfo[1].propagationdelay
 #define	DEFAULT_FREQ 1000000 //(3*FRAME_HEADER_SIZE + MAX_DATAGRAM_SIZE)/linkinfo[1].bandwidth + linkinfo[1].propagationdelay
 
 /* Type definitions*/
-typedef enum 
-{
-	DL_DATA, DL_BEACON, DL_RTS, DL_CTS, DL_ACK
-} FRAMETYPE;
-
-typedef struct 
-{
-	char	data[MAX_MESSAGE_SIZE];
-} MSG;
 
 typedef struct 
 {
@@ -29,7 +19,7 @@ typedef struct
 	int		dest;	// Zero if beacon, so broadcasted
 	int 		src;
 	size_t		len;
-	char*		msg;
+	char		msg[MAX_PACKET_SIZE];
 } FRAME;
 
 
@@ -64,6 +54,7 @@ static int backoff = 0;
 /*queue definitions*/
 int enqueue(struct queue* q, FRAME f)
 {
+	/* TODO: whut? there is no way n can be null here */
 	struct node* n = malloc(sizeof(struct node));
 	if (n == NULL) 
 	{
@@ -121,20 +112,19 @@ int get_nbytes_writeable()
 
 void send_frame(FRAMETYPE type, CnetAddr dest, int len, char* data) 
 {
-	FRAME f;
-	f.type = type;
-	f.dest = dest;
-	f.src = nodeinfo.nodenumber;
-	f.len = len;
-	f.msg = malloc(len);
+	FRAME* f = malloc(FRAME_HEADER_SIZE + len);
+	f->type = type;
+	f->dest = dest;
+	f->src = nodeinfo.nodenumber;
+	f->len = len;
 	if(data != NULL)
-		memcpy(f.msg, data, len);
+		memcpy(f->msg, data, len);
 	else 
-		f.msg = NULL;
+		f->msg[0] = '\0';
 
-	size_t msglen = sizeof(FRAME) + len; // TODO: check that this is the correct size!! I just made this up - Renee.
+	size_t msglen = FRAME_HEADER_SIZE + len; // TODO: check that this is the correct size!! I just made this up - Renee.
 	//send frame over cnet
-	CHECK(CNET_write_physical(1, &f, &msglen));
+	CHECK(CNET_write_physical(1, f, &msglen));
 }
 
 /* send data msg of length len to receiver recv 
@@ -147,7 +137,6 @@ void link_send_data( char* msg, int len, CnetAddr recv)
 	f.dest = recv;
 	f.src = nodeinfo.nodenumber;
 	f.len = len;
-	f.msg = malloc(len);
 	memcpy(f.msg, msg, len);
 	enqueue(buf, f);
 }
@@ -161,12 +150,11 @@ void link_send_data( char* msg, int len, CnetAddr recv)
  */
 void link_send_info( char* msg, int len, CnetAddr recv) 
 {
-	FRAME* f = malloc(sizeof(FRAME));
+	FRAME* f = malloc(FRAME_HEADER_SIZE + len);
 	f->type = DL_DATA;
 	f->dest = recv;
 	f->src = nodeinfo.nodenumber;
 	f->len = len;
-	f->msg = malloc(len);
 	memcpy(f->msg, msg, len);
 	info = f;
 }
@@ -208,6 +196,7 @@ static EVENT_HANDLER(timeout)
 		if(numTimeouts > 3) 
 		{
 			sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, 0);
+			/* TODO: not sure what's happening here */
 			FRAME* f = malloc(sizeof(FRAME));
 			dequeue(buf, f);
 			free(f);
@@ -220,6 +209,9 @@ static EVENT_HANDLER(timeout)
 	else 
 	{
 		sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, 0);
+		/* TODO: or here. But I think you've made is so that dequeu needs
+		 * frame reference. Better to make dequeue return if we can
+		 */
 		FRAME* f = malloc(sizeof(FRAME));
 		dequeue(buf, f);
 		free(f);
