@@ -20,8 +20,6 @@
 #include "dtn.h"
 #include <stdlib.h>
 
-/* todo: globalize this, make it a correct number */
-#define MAXNODES 1000
 
 /* structure to represent node and location */
 typedef struct 
@@ -37,7 +35,7 @@ typedef struct
 	NODELOCATION senderLocation;
 	uint32_t freeBufferSpace; /* how many bytes of space available in transmitting nodes' public buffer */
 	uint16_t locationsSize; /* how many elements in locations */
-	NODELOCATION locations[MAXNODES]; /* array of (last known) locations of known hosts */	
+	NODELOCATION locations[NUM_NODES]; /* array of (last known) locations of known hosts */	
 } OraclePacket;
 
 /* structure to store information about neighbours */

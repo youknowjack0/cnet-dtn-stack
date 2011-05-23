@@ -7,7 +7,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-
 /*
  **************************************************
  * The datagram structure.			  *
@@ -38,7 +37,7 @@ typedef struct
 	/* the number of fragments in this message */
 	int frag_count;
 	/* the message fragment */
-	char msg_frag[MAX_DATAGRAM_SIZE];
+	char msg_frag[MAX_FRAGMENT_SIZE];
 } DATAGRAM;
 
 
@@ -875,7 +874,7 @@ static bool enqueue(TRANSQUEUE* q, DATAGRAM* dat)
 		tree_add(tree_map, key, el);
 	}
 
-	memcpy(el->frags + el->num_frags_gotten++, dat, sizeof(DATAGRAM) - MAX_DATAGRAM_SIZE + dat->msg_size);
+	memcpy(el->frags + el->num_frags_gotten++, dat, sizeof(DATAGRAM) - MAX_FRAGMENT_SIZE + dat->msg_size);
 	return (el->num_frags_gotten == el->num_frags_needed);
 }
 
@@ -982,7 +981,7 @@ void transport_recv(char * msg, int len, CnetAddr sender)
 	/* 
 	 * Check length
 	 */
-	if(len != (d->msg_size + sizeof(DATAGRAM) - MAX_DATAGRAM_SIZE))
+	if(len != (d->msg_size + sizeof(DATAGRAM) - MAX_FRAGMENT_SIZE))
 		return; 
 
 	/* 
@@ -1009,16 +1008,16 @@ void transport_recv(char * msg, int len, CnetAddr sender)
 			DATAGRAM* frags = queue_delete(buff, d->source, d->msg_num);
 			qsort(frags, d->frag_count, sizeof(DATAGRAM), comp); 
 			int num_frags = d->frag_count;
-			char* built_msg = malloc(num_frags * MAX_DATAGRAM_SIZE * sizeof(char));
+			char* built_msg = malloc(num_frags * MAX_FRAGMENT_SIZE * sizeof(char));
 			for(int i = 1; i <= num_frags; i++)
 			{
 				if(i == num_frags)
 				{
-					memcpy(built_msg + ((i - 1) * MAX_DATAGRAM_SIZE), frags[i - 1].msg_frag, frags[i - 1].msg_size);
+					memcpy(built_msg + ((i - 1) * MAX_FRAGMENT_SIZE), frags[i - 1].msg_frag, frags[i - 1].msg_size);
 				}
 				else
 				{
-					memcpy(built_msg + ((i - 1) * MAX_DATAGRAM_SIZE), frags[i - 1].msg_frag, MAX_DATAGRAM_SIZE);
+					memcpy(built_msg + ((i - 1) * MAX_FRAGMENT_SIZE), frags[i - 1].msg_frag, MAX_FRAGMENT_SIZE);
 				}
 			}
 			free(frags);
@@ -1039,11 +1038,11 @@ void transport_datagram(char* msg, int len, CnetAddr destination)
 	 * Determine how many fragments will be needed
 	 */
 	int extra;
-	if ((len % MAX_DATAGRAM_SIZE) == 0)
+	if ((len % MAX_FRAGMENT_SIZE) == 0)
 		extra = 0;
 	else
 		extra = 1;
-	int num_frags_needed = (len / MAX_DATAGRAM_SIZE) + extra;
+	int num_frags_needed = (len / MAX_FRAGMENT_SIZE) + extra;
 
 	int src = nodeinfo.nodenumber;
 	int msg_num = ++msg_num_counter;
@@ -1056,11 +1055,11 @@ void transport_datagram(char* msg, int len, CnetAddr destination)
 		 */
 		if(i == num_frags_needed) 
 		{
-			int remainder = len % MAX_DATAGRAM_SIZE;
+			int remainder = len % MAX_FRAGMENT_SIZE;
 			if (remainder == 0)
-				remainder = MAX_DATAGRAM_SIZE;
+				remainder = MAX_FRAGMENT_SIZE;
 
-			DATAGRAM* d = malloc(sizeof(DATAGRAM) - MAX_DATAGRAM_SIZE + remainder); 
+			DATAGRAM* d = malloc(sizeof(DATAGRAM) - MAX_FRAGMENT_SIZE + remainder); 
 
 			d->msg_size = remainder;
 			d->source = src;
@@ -1071,12 +1070,12 @@ void transport_datagram(char* msg, int len, CnetAddr destination)
 			/*
 			 * copy over a part of a the message. parts are not null-terminated 
 			 */
-			memcpy(d->msg_frag, msg + ((i - 1) * MAX_DATAGRAM_SIZE), remainder);
+			memcpy(d->msg_frag, msg + ((i - 1) * MAX_FRAGMENT_SIZE), remainder);
 
 			d->checksum = CNET_crc32(((unsigned char *) d) + offsetof(DATAGRAM, msg_size), 
-					sizeof(DATAGRAM) - sizeof(d->checksum) - MAX_DATAGRAM_SIZE + remainder); 
+					sizeof(DATAGRAM) - sizeof(d->checksum) - MAX_FRAGMENT_SIZE + remainder); 
 
-			net_send(((char*) d), sizeof(DATAGRAM) - MAX_DATAGRAM_SIZE + remainder, destination);
+			net_send(((char*) d), sizeof(DATAGRAM) - MAX_FRAGMENT_SIZE + remainder, destination);
 			free(d);
 		}
 		/*
@@ -1086,7 +1085,7 @@ void transport_datagram(char* msg, int len, CnetAddr destination)
 		{
 			DATAGRAM* d = malloc(sizeof(DATAGRAM));
 
-			d->msg_size = MAX_DATAGRAM_SIZE;
+			d->msg_size = MAX_FRAGMENT_SIZE;
 			d->source = src;
 			d->msg_num = msg_num;
 			d->frag_num = frag_num++;
@@ -1095,7 +1094,7 @@ void transport_datagram(char* msg, int len, CnetAddr destination)
 			/*
 			 * copy over a part of a the message. parts are not null-terminated 
 			 */
-			memcpy(d->msg_frag, msg + ((i - 1) * MAX_DATAGRAM_SIZE), MAX_DATAGRAM_SIZE);
+			memcpy(d->msg_frag, msg + ((i - 1) * MAX_FRAGMENT_SIZE), MAX_FRAGMENT_SIZE);
 
 			d->checksum = CNET_crc32(((unsigned char *) d) + offsetof(DATAGRAM, msg_size), 
 					sizeof(DATAGRAM) - sizeof(d->checksum)); 
