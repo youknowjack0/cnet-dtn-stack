@@ -874,7 +874,7 @@ static bool enqueue(TRANSQUEUE* q, DATAGRAM* dat)
 		tree_add(tree_map, key, el);
 	}
 
-	memcpy(el->frags + el->num_frags_gotten++, dat, sizeof(DATAGRAM) - MAX_FRAGMENT_SIZE + dat->msg_size);
+	memcpy(el->frags + el->num_frags_gotten++, dat, DATAGRAM_HEADER_SIZE + dat->msg_size);
 	return (el->num_frags_gotten == el->num_frags_needed);
 }
 
@@ -975,13 +975,13 @@ static int comp(const void* one, const void* two)
  * by concatenating the two elements into a string)  to links in the 
  * Queue.
  */
-void transport_recv(char * msg, int len, CnetAddr sender) 
+void transport_recv(char* msg, int len, CnetAddr sender) 
 {
-	DATAGRAM * d = (DATAGRAM*) msg;
+	DATAGRAM* d = (DATAGRAM*) msg;
 	/* 
 	 * Check length
 	 */
-	if(len != (d->msg_size + sizeof(DATAGRAM) - MAX_FRAGMENT_SIZE))
+	if(len != (d->msg_size + DATAGRAM_HEADER_SIZE));
 		return; 
 
 	/* 
@@ -1059,7 +1059,7 @@ void transport_datagram(char* msg, int len, CnetAddr destination)
 			if (remainder == 0)
 				remainder = MAX_FRAGMENT_SIZE;
 
-			DATAGRAM* d = malloc(sizeof(DATAGRAM) - MAX_FRAGMENT_SIZE + remainder); 
+			DATAGRAM* d = malloc(DATAGRAM_HEADER_SIZE + remainder); 
 
 			d->msg_size = remainder;
 			d->source = src;
@@ -1075,7 +1075,7 @@ void transport_datagram(char* msg, int len, CnetAddr destination)
 			d->checksum = CNET_crc32(((unsigned char *) d) + offsetof(DATAGRAM, msg_size), 
 					sizeof(DATAGRAM) - sizeof(d->checksum) - MAX_FRAGMENT_SIZE + remainder); 
 
-			net_send(((char*) d), sizeof(DATAGRAM) - MAX_FRAGMENT_SIZE + remainder, destination);
+			net_send(((char*) d), DATAGRAM_HEADER_SIZE + remainder, destination);
 			free(d);
 		}
 		/*
@@ -1122,5 +1122,4 @@ void transport_init()
 /* 
  * TODO: Check for mem leaks.
  * TODO: Implement limited buffer! 
- * TODO: Fix hash defined maximum sizes so that things add up.
  */
