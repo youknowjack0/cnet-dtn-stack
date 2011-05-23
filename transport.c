@@ -544,7 +544,6 @@ static struct RB_TREE_NODE* right_min(struct RB_TREE_NODE* root)
 /*
  * Finds the sibling of node.
  */
-/* NOT USED _YET_
 static struct RB_TREE_NODE* get_sibling(struct RB_TREE_NODE* node)
 {
 	if(node == node->parent->left_child)
@@ -556,10 +555,9 @@ static struct RB_TREE_NODE* get_sibling(struct RB_TREE_NODE* node)
 		return node->parent->left_child;
 	}
 }
-*/
 
 /*
- * Replace node with child in the tree
+ * Replace node with child in the tree where node has at most one non-leaf child
  */
 static void replace(struct RB_TREE_NODE* node, struct RB_TREE_NODE* child)
 {
@@ -586,29 +584,115 @@ static void replace(struct RB_TREE_NODE* node, struct RB_TREE_NODE* child)
 	}
 }
 
-/*
+static void tree_del_c1(struct RB_TREE_NODE*);
+
 static void tree_del_c6(struct RB_TREE_NODE* node)
 {
+	struct RB_TREE_NODE* sib = get_sibling(node);
+
+	sib->col = node->parent->col;
+	node->parent->col = BLACK;
+
+	if(node == node->parent->left_child)
+	{
+		sib->right_child->col = BLACK;
+		rotate_left(node->parent);
+	}
+	else
+	{
+		sib->left_child->col = BLACK;
+		rotate_right(node->parent);
+	}
 }
 
 static void tree_del_c5(struct RB_TREE_NODE* node)
 {
+	struct RB_TREE_NODE* sib = get_sibling(node);	
+
+	if(sib->col == BLACK)
+	{
+		if((node == node->parent->left_child) &&
+			(sib->right_child->col == BLACK) &&
+			(sib->left_child->col == RED))
+		{
+			sib->col = RED;
+			sib->left_child->col = BLACK;
+			rotate_right(sib);
+		}
+		else if((node == node->parent->right_child) &&
+			(sib->left_child->col == BLACK) &&
+			(sib->right_child->col == RED))
+		{
+			sib->col = RED;
+			sib->right_child->col = BLACK;
+			rotate_left(sib);
+		}
+	}
+	tree_del_c6(node);
 }
 
 static void tree_del_c4(struct RB_TREE_NODE* node)
 {
+	struct RB_TREE_NODE* sib = get_sibling(node);
+
+	if((node->parent->col == RED) &&
+		(sib->col == BLACK) &&
+		(sib->left_child->col == BLACK) &&
+		(sib->right_child->col == BLACK))
+	{
+		sib->col = RED;
+		node->parent->col = BLACK;
+	}
+	else
+	{
+		tree_del_c5(node);
+	}
 }
 
 static void tree_del_c3(struct RB_TREE_NODE* node)
 {
+	struct RB_TREE_NODE* sib = get_sibling(node);
+
+	if((node->parent->col == BLACK) &&
+		(sib->col == BLACK) &&
+		(sib->left_child->col == BLACK) &&
+		(sib->right_child->col == BLACK))
+	{
+		sib->col = RED;
+		tree_del_c1(node->parent);
+	}
+	else
+	{
+		tree_del_c4(node);
+	}
 }
 
 static void tree_del_c2(struct RB_TREE_NODE* node)
 {
+	struct RB_TREE_NODE* sib = get_sibling(node);
+
+	if(sib->col == RED)
+	{
+		node->parent->col = RED;
+		sib->col = BLACK;
+		if(node == node->parent->left_child)
+		{
+			rotate_left(node->parent);
+		}
+		else
+		{
+			rotate_right(node->parent);
+		}
+	}
+	tree_del_c3(node);
 }
-*/
+
 static void tree_del_c1(struct RB_TREE_NODE* node)
 {
+	if(node->parent != NULL)
+	{
+		tree_del_c2(node);
+	}
 }
 
 /*
