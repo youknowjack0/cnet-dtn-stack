@@ -8,7 +8,7 @@
 
 #define TIMESLOT 			CNET_rand()%freq + 1
 
-#define WAITINGTIME (FRAME_HEADER_SIZE + len)/linkinfo[1].bandwidth + linkinfo[1].propagationdelay
+#define WAITINGTIME 1000000000
 #define	DEFAULT_FREQ 1000000 //(3*FRAME_HEADER_SIZE + MAX_DATAGRAM_SIZE)/linkinfo[1].bandwidth + linkinfo[1].propagationdelay
 
 /* Type definitions*/
@@ -19,6 +19,7 @@ typedef struct
 	int		dest;	// Zero if beacon, so broadcasted
 	int 		src;
 	size_t		len;
+	int checksum;
 	char		msg[MAX_PACKET_SIZE];
 } FRAME;
 
@@ -38,6 +39,9 @@ struct queue
 /* end type defs */
 
 
+#define FRAME_HEADER_SIZE2  (sizeof(FRAME) - (sizeof(char)*MAX_PACKET_SIZE))
+#define FRAME_SIZE(f)      (FRAME_HEADER_SIZE2 + f.len)
+
 /* Global var declarations */
 static	int64_t	freq	= DEFAULT_FREQ;
 
@@ -47,9 +51,11 @@ static CnetTimerID sendTimer;
 struct queue* buf; 
 
 static FRAME* info; //info frame buffer
-bool sent_info = false;
+static bool sent_info = false;
+static bool sending_data = false;
 static int numFrames;
 static int backoff = 0;
+static int numTimeouts = 0;
 /* End global vars */
 
 /*queue definitions*/
@@ -106,21 +112,31 @@ int get_nbytes_writeable()
 }
 */
 
-void send_frame(FRAMETYPE type, CnetAddr dest, int len, char* data) 
+void send_frame(FRAMETYPE type, CnetAddr dest, size_t len, char* data) 
 {
-	FRAME* f = malloc(FRAME_HEADER_SIZE + len);
-	f->type = type;
-	f->dest = dest;
-	f->src = nodeinfo.nodenumber;
-	f->len = len;
-	if(data != NULL)
-		memcpy(f->msg, data, len);
-	else 
-		f->msg[0] = '\0';
-
-	size_t msglen = FRAME_HEADER_SIZE + len; // TODO: check that this is the correct size!! I just made this up - Renee.
+	printf("    Node %d: Sending frame\n", nodeinfo.nodenumber);
+	FRAME f;// = malloc(FRAME_HEADER_SIZE + len);
+	f.type = type;
+	f.dest = dest;
+	f.src = nodeinfo.nodenumber;
+	f.len = len;
+	f.checksum = 0;
+	size_t framelen;
+	printf("    Node %d: set up header\n", nodeinfo.nodenumber);
+	if(data != NULL) {
+		memcpy(f.msg, data, len);
+		framelen = FRAME_HEADER_SIZE + len;
+		printf("    Node %d: copied frame\n", nodeinfo.nodenumber);
+	}
+	else  {
+		f.msg[0] = '\0';
+		f.len = strlen(f.msg);
+		framelen = FRAME_HEADER_SIZE + len;
+	}
+	f.checksum  = CNET_ccitt((unsigned char *)&f, (int)framelen);
+	printf("Node %d: Sending frame with checksum %d, len = %d\n", nodeinfo.nodenumber, f.checksum, framelen);
 	//send frame over cnet
-	CHECK(CNET_write_physical_reliable(1, f, &msglen));
+	CHECK(CNET_write_physical(1, &f, &framelen));
 }
 
 /* send data msg of length len to receiver recv 
@@ -159,59 +175,54 @@ void link_send_info( char* msg, int len, CnetAddr recv)
 
 static EVENT_HANDLER(collision) 
 {
-	CNET_stop_timer(sendTimer);
+	CHECK(CNET_stop_timer(sendTimer));
 	sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT* (CNET_rand()%((int)pow(2,backoff))), 0);
 	backoff++;
 }
 
 static EVENT_HANDLER(send) 
 {
+	printf("starting send\n");
 	if(CNET_carrier_sense(1)==0) 
 	{
 		backoff = 0;
-		if(sent_info != true) 
+		if(sent_info == false && info != NULL)
 		{
+			printf("trying to send beacon\n");
 			send_frame(DL_BEACON, info->dest, info->len, info->msg);
 			sent_info = true;
 			//sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, 0);
 		}
-		else if(!buf->head)
+		else if(sending_data == false && buf->head != NULL)
 		{
+			printf("trying to send data\n");
 			FRAME f = buf->head->f;
-			send_frame(DL_RTS, f.dest, 0, NULL);
+			printf("got frame here\n");
+			sending_data = true;
+			local_timer = CNET_start_timer(EV_TIMER1, WAITINGTIME, 0);
+			send_frame(DL_RTS, f.dest, f.len, f.msg);
 		}
 	}
 	sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, 0);
+	printf("finished send\n");
 }
 
 static EVENT_HANDLER(timeout) 
 {
-	CnetData numTimeouts = 0; // ok to init to zero? I don't know what's going on here - Renee.
-	if(CNET_timer_data(local_timer, &numTimeouts) == 0) 
-	{ 
+	printf("\t\t\tTiming out!\n");
+	numTimeouts++;
 		if(numTimeouts > 3) 
 		{
-			sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, 0);
+			
 			/* TODO: not sure what's happening here */
 			FRAME* f = malloc(sizeof(FRAME));
 			dequeue(buf, f);
 			free(f);
+			numTimeouts = 0;
+			
 		} 
-		else 
-		{
-			sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, numTimeouts + 1);
-		}
-	} 
-	else 
-	{
+		sending_data = false;
 		sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, 0);
-		/* TODO: or here. But I think you've made is so that dequeu needs
-		 * frame reference. Better to make dequeue return if we can
-		 */
-		FRAME* f = malloc(sizeof(FRAME));
-		dequeue(buf, f);
-		free(f);
-	}
 }
 
 
@@ -220,49 +231,69 @@ static EVENT_HANDLER(receive)
 {
 	FRAME f;
 	size_t len;
-	int link;
+	int link, checksum;
 
 	//receive the frame
+	len = MAX_FRAME_SIZE;
 	CHECK(CNET_read_physical(&link, &f, &len));
-
-	switch(f.type) 
+	printf("Node %d: Read physical, len = %d\n", nodeinfo.nodenumber, len);
+	
+	checksum    = f.checksum;
+    f.checksum  = 0;
+    printf("Node %d: Receiving frame with checksum %d\n",nodeinfo.nodenumber, checksum);
+    int new_check = CNET_ccitt((unsigned char *)&f, len);
+    printf("Calculated checksum is: %d\n", new_check);
+    if(new_check != checksum) {
+        printf("\t\t\t\tBAD checksum\n");
+        //sending_data = false;
+        //CNET_stop_timer(local_timer);
+        //sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, 0);
+        return;           /* bad checksum, ignore frame */
+    }
+	
+	switch(f.type)
 	{
 		case DL_BEACON:
 			printf("Beacon from: %d\n",f.src);
 			//oracle_recv(f.msg, f.len, f.src);
 			break;
 		case DL_RTS:
-			if(f.dest == nodeinfo.nodenumber) 
+			printf("Node %d: Processing RTS\n", nodeinfo.nodenumber);
+			if(f.dest == nodeinfo.nodenumber)
 			{
-				send_frame(DL_CTS, f.src, 0, NULL);	
+				send_frame(DL_CTS, f.src, f.len, f.msg);
 			}
 			local_timer = CNET_start_timer(EV_TIMER1, WAITINGTIME, 0);
 			break;
 		case DL_CTS:
+			printf("Node %d: Processing CTS\n", nodeinfo.nodenumber);
 			if(f.dest == nodeinfo.nodenumber) 
 			{
-				CNET_stop_timer(local_timer);
+				CHECK(CNET_stop_timer(local_timer));
 				FRAME next;
 				dequeue(buf, &next);
-				send_frame(next.type, next.src, next.len, next.msg); //send DATA
+				send_frame(DL_DATA, f.src, f.len, f.msg); //send DATA
 			}
 			local_timer = CNET_start_timer(EV_TIMER1, WAITINGTIME, 0);
 			break;
 		case DL_DATA:
 			if(f.dest == nodeinfo.nodenumber) 
 			{
-				CNET_stop_timer(local_timer);
+				CHECK(CNET_stop_timer(local_timer));
 				printf("Recevied from: %d\n",f.src);
+				CHECK(CNET_write_application(&f.msg, &f.len));
 				//net_recv(f.msg, f.len, f.src);
+				send_frame(DL_ACK, f.src, f.len, f.msg);
 			}
 			local_timer = CNET_start_timer(EV_TIMER1, WAITINGTIME, 0);
 			break;
 		case DL_ACK:
 			if(f.dest == nodeinfo.nodenumber) 
 			{
+				sending_data = false;
 				sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, 0);
 			}
-			CNET_stop_timer(local_timer);
+			CHECK(CNET_stop_timer(local_timer));
 			break;
 			//schedule next message (or set some state that means we can send)
 	}
@@ -283,29 +314,31 @@ void link_init()
 
 	info = NULL;
 	numFrames = 0;
+	
+	sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, 0);
 }
 
-EVENT_HANDLER(generate)
+/* TESTING CODE
+EVENT_HANDLER(app_rdy)
 {
-	int newDest;
-	do {
-				newDest	= CNET_rand() % NNODES;
-	} while(newDest == nodeinfo.nodenumber);
-	//myDest = frame.header.dest;
-	char* nextPayload = malloc(MAX_PACKET_SIZE);
-	sprintf(nextPayload, "hello from %d", nodeinfo.nodenumber);
-	link_send_data(nextPayload, MAX_PACKET_SIZE, newDest);
-	CNET_start_timer(EV_TIMER3, 1000000 + CNET_rand()%freq, 0);
+
+	FRAME f;
+	f.len = MAX_PACKET_SIZE;
+	CHECK(CNET_read_application(&f.dest, f.msg, &f.len));
+	printf("Node %d: generated message for %d\n", nodeinfo.nodenumber, f.dest);
+	link_send_data(f.msg, f.len, f.dest);
 }
 
 EVENT_HANDLER(reboot_node)
 {
 	link_init();
-	CHECK(CNET_set_handler(EV_TIMER3, generate, 0));
-	CNET_start_timer(EV_TIMER3, 1000000 + CNET_rand()%freq, 0);
-	sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, 0);
+	CHECK(CNET_set_handler(EV_APPLICATIONREADY, app_rdy, 0));
+	
+	
+	if(nodeinfo.nodenumber == 0)
+		CNET_enable_application(ALLNODES);
 }
-
+*/
 /*
 int main(int argc, char* argv[])
 {
