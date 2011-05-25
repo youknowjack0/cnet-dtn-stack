@@ -10,7 +10,7 @@
 /* This is the maximum size of the PAYLOAD of a datagram, not the datagram including the header! */
 
 #define MAXMESSAGESIZE 100000 /* TODO: This is just for use by the fakeapp. It's arbitrary and meaningless */
-#define MAX_FRAME_SIZE 1500 /* TODO: What is this actually? All other max sizes are based on this. */
+#define MAX_FRAME_SIZE WLAN_MAXDATA /* TODO: What is this actually? All other max sizes are based on this. */
 
 /* These are used by the link layer. */
 #define FRAME_HEADER_SIZE (sizeof(FRAMETYPE) + (3 * sizeof(int)) + sizeof(size_t))
