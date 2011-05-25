@@ -172,8 +172,13 @@ static PACKET* pop(STACK* s)
 static void try_to_send(PACKET* pack, STACK* s) 
 {
 	int mem_used = PACKET_HEADER_SIZE + pack->len;
-	CnetAddr* add_p = NULL;
-	bool can_send = get_nth_best_node(add_p, 0, pack->dest, mem_used);
+	CnetAddr add_p;
+	
+	printf("Node %d Network: going to oracle\n",nodeinfo.nodenumber);
+	
+	bool can_send = get_nth_best_node(&add_p, 0, pack->dest, mem_used);
+	
+	printf("Node %d Network: got past oracle\n",nodeinfo.nodenumber);
 
 	if (can_send) 
 	{
@@ -183,7 +188,7 @@ static void try_to_send(PACKET* pack, STACK* s)
 		 * the DLL buffer.
 		 * TODO: check the DLL buffer
 		 */
-		link_send_data((char*) pack, mem_used, *add_p);
+		link_send_data((char*) pack, mem_used, add_p);
 		free(pack);
 	}
 	else 
@@ -213,13 +218,14 @@ bool net_send(char* msg, int len, CnetAddr dst)
 	 * will return false
 	 *
 	 */
-
+	printf("Node %d Network: got msg with dest = %d\n", nodeinfo.nodenumber, dst);
 	int mem_used = PACKET_HEADER_SIZE + len;
 	PACKET* pack = malloc(mem_used);
 	pack->source = nodeinfo.nodenumber;
 	pack->dest = dst;
 	pack->len = len;
 	memcpy(pack->msg, msg, len);
+	printf("Node %d Network: copied message\n",nodeinfo.nodenumber);
 
 	/*
 	 * attempt to send message. if it can not be sent, buffer
@@ -256,6 +262,7 @@ void net_recv(char* msg, int len, CnetAddr src)
 	 * in this case, the message received from the DLL is just a
 	 * packet. The size of the packet is len
 	 */
+	printf("Node %d: net_recv\n", nodeinfo.nodenumber);
 	int mem_used = len;
 	PACKET* pack = malloc(mem_used);
 	memcpy(pack, msg, mem_used);

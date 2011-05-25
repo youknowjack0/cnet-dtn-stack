@@ -1017,12 +1017,15 @@ static int comp(const void* one, const void* two)
  */
 void transport_recv(char* msg, int len, CnetAddr sender) 
 {
+	printf("Node %d: transport_recv\n", nodeinfo.nodenumber);
 	DATAGRAM* d = (DATAGRAM*) msg;
 	/* 
 	 * Check length
 	 */
-	if(len != (d->msg_size + DATAGRAM_HEADER_SIZE));
-		return; 
+	//if(len != (d->msg_size + DATAGRAM_HEADER_SIZE));
+		//return; 
+
+	//printf("Node %d: transport got past length check\n", nodeinfo.nodenumber);
 
 	/* 
 	 * Check integrity 
@@ -1030,12 +1033,14 @@ void transport_recv(char* msg, int len, CnetAddr sender)
 	int sum = CNET_crc32((unsigned char *)(d) + offsetof(DATAGRAM, msg_size), len - sizeof(d->checksum));
 	if(sum != d->checksum) return; 
 
+	
+	printf("Node %d: transport_recv, got past checksum\n", nodeinfo.nodenumber);
 	/* 
 	 * Pass up 
 	 */
 	if(d->frag_count == 1)
 	{
-		receive_message(d->msg_frag, d->msg_size, sender);
+		message_receive(d->msg_frag, d->msg_size, sender);
 	}
 	else
 	{
@@ -1063,7 +1068,7 @@ void transport_recv(char* msg, int len, CnetAddr sender)
 					built_msg_size += MAX_FRAGMENT_SIZE;
 				}
 			}
-			receive_message(built_msg, built_msg_size, sender);
+			message_receive(built_msg, built_msg_size, sender);
 			free(built_msg);
 			free(frags);
 		}
@@ -1092,16 +1097,46 @@ void transport_datagram(char* msg, int len, CnetAddr destination)
 	int src = nodeinfo.nodenumber;
 	int msg_num = ++msg_num_counter;
 	int frag_num = 0;
+	printf("Node %d Transport: init trans_datagram done\n", nodeinfo.nodenumber);
+	/*
+	 * if the message is of length zero
+	 */
+	if(num_frags_needed == 0)
+	{		
+			printf("Node %d Transport: got num_frags = 0\n", nodeinfo.nodenumber);
+			/*
+			 * Make new datagram
+			 */
+			DATAGRAM* d = malloc(DATAGRAM_HEADER_SIZE); 
 
+			d->msg_size = 0;
+			d->source = src;
+			d->msg_num = msg_num;
+			d->frag_num = frag_num++;
+			d->frag_count = num_frags_needed;
+
+			/*
+			 * Set the checksum
+			 */
+			d->checksum = CNET_crc32(((unsigned char *) d) + offsetof(DATAGRAM, msg_size), 
+					sizeof(DATAGRAM) - sizeof(d->checksum) - MAX_FRAGMENT_SIZE); 
+
+			/*
+			 * Send it and free the memory
+			 */
+			printf("Node %d Transport: about to net_send\n", nodeinfo.nodenumber);
+			net_send(((char*) d), DATAGRAM_HEADER_SIZE, destination);
+			free(d);
+	}
 	/*
 	 * Break the message into fragments
 	 */
-	for(int i = 1; i <= num_frags_needed; i++) 
+	for(int i = 0; i < num_frags_needed; i++) 
 	{
 		/*
 		 * if it is the last fragment of the message:
 		 */
-		if(i == num_frags_needed) 
+		if((i == num_frags_needed - 1)) 
 		{
 			int remainder = len % MAX_FRAGMENT_SIZE;
 			if (remainder == 0)
@@ -1121,7 +1156,7 @@ void transport_datagram(char* msg, int len, CnetAddr destination)
 			/*
 			 * copy over a part of a the message. parts are not null-terminated 
 			 */
-			memcpy(d->msg_frag, msg + ((i - 1) * MAX_FRAGMENT_SIZE), remainder);
+			memcpy(d->msg_frag, msg + (i * MAX_FRAGMENT_SIZE), remainder);
 
 			/*
 			 * Set the checksum
@@ -1132,6 +1167,7 @@ void transport_datagram(char* msg, int len, CnetAddr destination)
 			/*
 			 * Send it and free the memory
 			 */
+			printf("Node %d Transport: about to net_send\n", nodeinfo.nodenumber);
 			net_send(((char*) d), DATAGRAM_HEADER_SIZE + remainder, destination);
 			free(d);
 		}
@@ -1154,7 +1190,7 @@ void transport_datagram(char* msg, int len, CnetAddr destination)
 			/*
 			 * copy over a part of a the message. parts are not null-terminated 
 			 */
-			memcpy(d->msg_frag, msg + ((i - 1) * MAX_FRAGMENT_SIZE), MAX_FRAGMENT_SIZE);
+			memcpy(d->msg_frag, msg + (i * MAX_FRAGMENT_SIZE), MAX_FRAGMENT_SIZE);
 
 			/*
 			 * Set the checksum
@@ -1165,6 +1201,7 @@ void transport_datagram(char* msg, int len, CnetAddr destination)
 			/*
 			 * Send it and free the memory
 			 */
+			printf("Node %d Transport: about to net_send\n", nodeinfo.nodenumber);
 			net_send(((char*)d), sizeof(DATAGRAM), destination);
 			free(d);
 		}

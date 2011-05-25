@@ -94,9 +94,10 @@ static uint32_t checksum_oracle_packet(OraclePacket * p)
 
 /* broadcast info about this node and other known nodes
  */
-static void sendOracleBeacon() 
+EVENT_HANDLER(sendOracleBeacon)
 {
 	/* possible todo: restructure the Neighbour data so that this can be done with one memcpy */
+	printf("Node %d: starting beacon send\n", nodeinfo.nodenumber);
 	OraclePacket p;
 	for(int i=0;i<dbsize;i++) 
 	{
@@ -104,15 +105,16 @@ static void sendOracleBeacon()
 	}
 	p.freeBufferSpace = get_public_nbytes_free();
 	p.locationsSize = dbsize;
-	p.senderLocation.addr = nodeinfo.address;
+	p.senderLocation.addr = nodeinfo.nodenumber;
 	CnetPosition loc;
 	CNET_get_position(&loc, NULL);
 	p.senderLocation.loc = loc;	
 	char * pp = (char *)(&(p));	
 	p.checksum = checksum_oracle_packet(&p);
 	/* todo: macro for the packet header */
+	printf("Node %d: preparing to send beacon to link\n", nodeinfo.nodenumber);
 	link_send_info(pp, sizeof(p) - sizeof(p.locations) + sizeof(NODELOCATION)*dbsize, ALLNODES);
-
+	printf("Node %d: sent beacon to link\n", nodeinfo.nodenumber);
 	/* send again later */
 	CNET_start_timer(EV_TIMER7, (CnetTime)ORACLEINTERVAL, 0);
 }
@@ -122,10 +124,10 @@ static void sendOracleBeacon()
  */
 static void processBeacon(OraclePacket * p) 
 {
-	for(int i=0;i<p->locationsSize;i++) 
+	for(int i=0;i < p->locationsSize;i++) 
 	{
-		if((int)p->locations[i].addr != (int)nodeinfo.address) /* if not THIS node */
-			savePosition(p->locations[i]);	
+		if((int)p->locations[i].addr != (int)nodeinfo.nodenumber) /* if not THIS node */
+			savePosition(p->locations[i]);
 	}
 
 	/* save some near-neighbour specific info */
@@ -199,8 +201,9 @@ bool get_nth_best_node(CnetAddr * ptr, int n, CnetAddr dest, size_t message_size
 			CnetPosition myPos; CNET_get_position(&myPos, NULL);	
 			if( isCloser(myPos, nextPos, destPos, MINDIST) ) 
 			{
-				*ptr = positionDB[i].nl.addr; 
-				return true; 
+				*ptr = positionDB[i].nl.addr;
+				printf("Node %d Oracle: set address for next to %d\n", nodeinfo.nodenumber, *ptr);
+				return *ptr != nodeinfo.nodenumber;
 			}
 		}
 	}
@@ -225,6 +228,21 @@ void oracle_recv(char * msg, int len, CnetAddr rcv)
  */
 void oracle_init() 
 {
+	dbsize = NUM_NODES;
+	positionDB = malloc(sizeof(Neighbour) * dbsize);
+	for(int i = 0; i < dbsize; i++) {
+		Neighbour n;
+		NODELOCATION nodel;
+		nodel.addr = i;
+		CnetPosition a;
+		a.x = 0;
+		a.y = 0;
+		nodel.loc = a;
+		n.freeBufferSpace = 0;
+		n.lastBeacon = 0;
+		n.nl = nodel;
+		positionDB[i] = n;
+	}
 	CNET_srand(nodeinfo.time_of_day.sec + nodeinfo.nodenumber);
 	/* schedule periodic transmission of topology information, or whatever */		
 	CNET_set_handler(EV_TIMER7, sendOracleBeacon, 0);

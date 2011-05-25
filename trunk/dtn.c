@@ -16,12 +16,13 @@ static WLANRESULT my_WLAN_model(WLANSIGNAL *sig);
 // -----------------------------------------------------------------------
 
 //  WE'RE NOT USING cnet's AL - JUST GENERATE AND TRANSMIT SOME SIMPLE DATA
+/*
 static EVENT_HANDLER(talking)
 {
 	size_t length = sizeof(nodeinfo.nodenumber);
 
 	CHECK(CNET_write_physical(1, &nodeinfo.nodenumber, &length));	// tiny
-	fprintf(stdout,"%2d: transmitting\n", nodeinfo.nodenumber);
+	fsprintf(stderrstdout,"%2d: transmitting\n", nodeinfo.nodenumber);
     
     CNET_start_timer(EV_TALKING, TALK_FREQUENCY, data);
 }
@@ -37,8 +38,33 @@ static EVENT_HANDLER(listening)
 
     double	rx_signal;
     CHECK(CNET_wlan_arrival(link, &rx_signal, NULL));
-    fprintf(stdout,"\t\t%2d: received from %2d,  @%.3fdBm\n",
+    fsprintf(stderrstdout,"\t\t%2d: received from %2d,  @%.3fdBm\n",
 		    nodeinfo.nodenumber, from, rx_signal);
+}
+*/
+
+EVENT_HANDLER(start_sending)
+{
+	if(nodeinfo.nodenumber == 0)
+			CNET_enable_application(ALLNODES);
+}
+
+void message_receive(char* data, int len, CnetAddr sender)
+{
+	size_t msglen = len;
+	printf("Node %d: Writing to APP\n", nodeinfo.nodenumber);
+	CNET_write_application(data, &msglen);
+}
+
+EVENT_HANDLER(app_rdy)
+{
+	printf("Node %d: app ready\n",nodeinfo.nodenumber);
+	char msg[MAXMESSAGESIZE];
+	int dest;
+	size_t len = MAXMESSAGESIZE;
+	CHECK(CNET_read_application(&dest, &msg, &len));
+	printf("Node %d: generated message for %d\n", nodeinfo.nodenumber, dest);
+	transport_datagram(msg, len, dest);
 }
 
 EVENT_HANDLER(reboot_node)
@@ -58,8 +84,10 @@ EVENT_HANDLER(reboot_node)
 	readmap(argv[0]);
 
 //  PROVIDE THE REQUIRED EVENT HANDLERs
-	CHECK(CNET_set_handler(EV_TALKING, talking, 0));
-	CHECK(CNET_set_handler(EV_PHYSICALREADY, listening, 0));
+	//CHECK(CNET_set_handler(EV_TALKING, talking, 0));
+	//CHECK(CNET_set_handler(EV_PHYSICALREADY, listening, 0));
+	CHECK(CNET_set_handler(EV_APPLICATIONREADY, app_rdy, 0));
+	CHECK(CNET_set_handler(EV_TIMER6, start_sending, 0));
 
 //	START LAYERS
 	transport_init();
@@ -74,6 +102,11 @@ EVENT_HANDLER(reboot_node)
 //  PREPARE TO TALK VIA OUR WIRELESS CONNECTION
 	CNET_set_wlan_model( my_WLAN_model );
 	CNET_start_timer(EV_TALKING, TALK_FREQUENCY, 0);
+	CNET_start_timer(EV_TIMER6, 10*ORACLEINTERVAL, 0);
+	
+	
+	
+	
     }
 }
 

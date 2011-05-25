@@ -9,7 +9,7 @@
 #define MINDIST 2
 /* This is the maximum size of the PAYLOAD of a datagram, not the datagram including the header! */
 
-#define MAXMESSAGESIZE 100000 /* TODO: This is just for use by the fakeapp. It's arbitrary and meaningless */
+#define MAXMESSAGESIZE 8192 /* TODO: This is just for use by the fakeapp. It's arbitrary and meaningless */
 #define MAX_FRAME_SIZE WLAN_MAXDATA /* TODO: What is this actually? All other max sizes are based on this. */
 
 /* These are used by the link layer. */
@@ -61,6 +61,9 @@ void transport_init();
 /* fakeapp.c */
 void generate_message();
 void receive_message(char* data, int len, CnetAddr sender);
+
+/*dtn.c*/
+void message_receive(char* data, int len, CnetAddr sender);
 
 
 
