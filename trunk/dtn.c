@@ -9,6 +9,7 @@
 
 #define	TALK_FREQUENCY		3000000		// talk every 3 seconds
 #define	EV_TALKING		EV_TIMER8
+#define MAXMESSAGE nodeinfo.maxmessagesize
 
 static WLANRESULT my_WLAN_model(WLANSIGNAL *sig);
 
@@ -53,15 +54,15 @@ void message_receive(char* data, int len, CnetAddr sender)
 {
 	size_t msglen = len;
 	printf("Node %d: Writing to APP\n", nodeinfo.nodenumber);
-	CNET_write_application(data, &msglen);
+	CHECK(CNET_write_application(data, &msglen));
 }
 
 EVENT_HANDLER(app_rdy)
 {
 	printf("Node %d: app ready\n",nodeinfo.nodenumber);
-	char msg[MAXMESSAGESIZE];
+	char msg[MAXMESSAGE];
 	int dest;
-	size_t len = MAXMESSAGESIZE;
+	size_t len = MAXMESSAGE;
 	CHECK(CNET_read_application(&dest, &msg, &len));
 	printf("Node %d: generated message for %d\n", nodeinfo.nodenumber, dest);
 	transport_datagram(msg, len, dest);

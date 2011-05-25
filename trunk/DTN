@@ -1,7 +1,7 @@
 compile			= "dtn.c mapping.c link.c network.c oracle.c transport.c walking.c"
 
 minmessagesize	= 500 bytes
-maxmessagesize	= 2312 bytes
+maxmessagesize	= 5000 bytes
 
 rebootargs	= "uwa1.map"
 //mapimage	= "uwa1.gif"
