@@ -8,8 +8,8 @@
 
 #define TIMESLOT 			CNET_rand()%freq + 1
 
-#define WAITINGTIME 500000
-#define	DEFAULT_FREQ 1000000 //(3*FRAME_HEADER_SIZE + MAX_DATAGRAM_SIZE)/linkinfo[1].bandwidth + linkinfo[1].propagationdelay
+#define WAITINGTIME 500000//(MAX_FRAME_SIZE*100000)/(linkinfo[1].bandwidth/8) //10000000
+#define	DEFAULT_FREQ 5000000 //(3*FRAME_HEADER_SIZE + MAX_DATAGRAM_SIZE)/linkinfo[1].bandwidth + linkinfo[1].propagationdelay
 
 /* Type definitions*/
 
@@ -84,7 +84,7 @@ int dequeue(struct queue* q, FRAME* f)
 		return -1;
 	}
 	FRAME* frame = &(q->head->f);
-	memcpy(f, frame, sizeof(frame));
+	memcpy(f, frame, sizeof(*frame));
 	struct node* tmp = q->head;
 	if (q->head == q->tail) 
 	{
@@ -165,7 +165,7 @@ void link_send_data( char* msg, int len, CnetAddr recv)
  */
 void link_send_info( char* msg, int len, CnetAddr recv) 
 {
-	printf("Node %d: getting info packet of len = %d, dest = %d\n", nodeinfo.nodenumber, len, recv);
+	//printf("Node %d: getting info packet of len = %d, dest = %d\n", nodeinfo.nodenumber, len, recv);
 	if(info != NULL)
 		free(info);
 	FRAME* f = malloc(FRAME_HEADER_SIZE + len);
@@ -176,7 +176,7 @@ void link_send_info( char* msg, int len, CnetAddr recv)
 	memcpy(f->msg, msg, len);
 	info = f;
 	sent_info = false;
-	printf("Node %d: got info successfully\n", nodeinfo.nodenumber);
+	//printf("Node %d: got info successfully\n", nodeinfo.nodenumber);
 }
 
 static EVENT_HANDLER(collision) 
@@ -207,7 +207,7 @@ static EVENT_HANDLER(send)
 			printf("Prepping for RTS\n");
 			local_timer = CNET_start_timer(EV_TIMER1, WAITINGTIME, 0);
 			printf("sending RTS, buffer\n");
-			send_frame(DL_RTS, f.dest, f.len, f.msg);
+			send_frame(DL_RTS, f.dest, 0, NULL);
 		}
 		else
 		{
@@ -223,8 +223,6 @@ static EVENT_HANDLER(timeout)
 	numTimeouts++;
 		if(numTimeouts > 3) 
 		{
-			
-			/* TODO: not sure what's happening here */
 			FRAME* f = malloc(sizeof(FRAME));
 			dequeue(buf, f);
 			free(f);
@@ -232,6 +230,7 @@ static EVENT_HANDLER(timeout)
 			
 		} 
 		sending_data = false;
+		CNET_stop_timer(sendTimer);
 		sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, 0);
 }
 
@@ -273,7 +272,7 @@ static EVENT_HANDLER(receive)
 			if(f.dest == nodeinfo.nodenumber)
 			{
 				printf("Sending CTS\n");
-				send_frame(DL_CTS, f.src, f.len, f.msg);
+				send_frame(DL_CTS, f.src, 0, NULL);
 			}
 			else
 			{
@@ -285,21 +284,22 @@ static EVENT_HANDLER(receive)
 			printf("Node %d: Processing CTS\n", nodeinfo.nodenumber);
 			if(f.dest == nodeinfo.nodenumber) 
 			{
-				CHECK(CNET_stop_timer(local_timer));
+				CNET_stop_timer(local_timer);
 				FRAME next;
 				dequeue(buf, &next);
-				send_frame(DL_DATA, f.src, f.len, f.msg); //send DATA
+				printf("Node %d: Sending DATA to %d\n", nodeinfo.nodenumber, next.dest);
+				send_frame(DL_DATA, next.dest, next.len, next.msg); //send DATA
 			}
 			local_timer = CNET_start_timer(EV_TIMER1, WAITINGTIME, 0);
 			break;
 		case DL_DATA:
 			if(f.dest == nodeinfo.nodenumber) 
 			{
-				CHECK(CNET_stop_timer(local_timer));
+				CNET_stop_timer(local_timer);
 				printf("Recevied from: %d\n",f.src);
 				//CHECK(CNET_write_application(&f.msg, &f.len));
 				net_recv(f.msg, f.len, f.src);
-				send_frame(DL_ACK, f.src, f.len, f.msg);
+				send_frame(DL_ACK, f.src, 0, NULL);
 			}
 			local_timer = CNET_start_timer(EV_TIMER1, WAITINGTIME, 0);
 			break;
@@ -310,7 +310,7 @@ static EVENT_HANDLER(receive)
 				sending_data = false;
 				sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, 0);
 			}
-			CHECK(CNET_stop_timer(local_timer));
+			CNET_stop_timer(local_timer);
 			break;
 			//schedule next message (or set some state that means we can send)
 	}
