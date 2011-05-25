@@ -88,50 +88,6 @@ typedef struct
 
 
 /*
- ***************************************************
- * STRUCTURES FOR THE RED-BLACK BINARY SEARCH TREE *
- ***************************************************
- */
-
-/*
- * The possible colors of elements in the red-black tree
- */
-typedef enum
-{
-	RED, BLACK
-} RED_OR_BLACK;
-
-
-/*
- * A structure for the elements of the red-black tree
- */
-struct RB_TREE_NODE
-{
-	struct RB_TREE_NODE* parent;
-	struct RB_TREE_NODE* left_child;
-	struct RB_TREE_NODE* right_child;
-	long long int key;
-	struct QUEUE_EL* value;
-	RED_OR_BLACK col;
-	bool is_leaf;
-};
-
-/*
- * A red-black tree structure
- */
-typedef struct
-{
-	struct RB_TREE_NODE* root;
-} RED_BLACK_TREE;
-
-/*
- *************************************
- * END STRUCTURES FOR RED-BLACK TREE *
- *************************************
- */
-
-
-/*
  ********************************
  * GLOBAL VARIABLE DECLARATIONS *
  ********************************
@@ -153,11 +109,6 @@ static int free_bytes;
 static TRANSQUEUE* buff;
 
 /*
- * The red-black tree based map
- */
-static RED_BLACK_TREE* tree_map;
-
-/*
  * Tracks whether to use right_min or left_max for
  * deletion from red-black tree
  */
@@ -175,7 +126,6 @@ static bool max_or_min;
  * DECLARATIONS FOR DEPENDENCY REASONS *
  ***************************************
  */
-static void tree_add_c1(struct RB_TREE_NODE*);
 
 static DATAGRAM* dequeue(TRANSQUEUE*);
 
@@ -186,642 +136,36 @@ static DATAGRAM* dequeue(TRANSQUEUE*);
  */
 
 /*
- * Make a new red-black tree
- */
-static RED_BLACK_TREE* new_red_black_tree()
-{
-	RED_BLACK_TREE* t = malloc(sizeof(RED_BLACK_TREE));
-	free_bytes -= sizeof(RED_BLACK_TREE);
-	t->root = NULL;
-	return t;
-}
-
-/*
  * Looks up the adress of the entry for the message in the
  * queue
  */
-static struct QUEUE_EL* tree_get_entry(struct RB_TREE_NODE* node, long long key)
+static struct QUEUE_EL* tree_get(int key)
 {
-	if(node == NULL)
-	{
+		struct QUEUE_EL* curr_el = buff->bottom;
+		while(curr_el->up != NULL)
+		{
+				if(curr_el->up->key == key)
+						return curr_el->up;
+				curr_el = curr_el->up;
+		}
 		return NULL;
-	}
-	else if(node->is_leaf == true)
-	{
-		return NULL;
-	}
-	else if(node->key == key)
-	{
-		return node->value;
-	}
-	else if(key < node->key)
-	{
-		return tree_get_entry(node->left_child, key);
-	}
-	else
-	{
-		return tree_get_entry(node->right_child, key);
-	}
-}
-
-/*
- * Looks up the adress of the entry for the message in the
- * queue
- */
-static struct QUEUE_EL* tree_get(RED_BLACK_TREE* tree, long long int key)
-{
-	return tree_get_entry(tree->root, key);
-}
-
-/*
- * return true if there is an entry in the buffer for the
- * message, else return false.
- */
-static bool tree_has_entry(RED_BLACK_TREE* tree, long long int key)
-{
-	return (tree_get(tree, key) != NULL);
-}
-
-/*
- * Returns the grandparent of a node in a red-black tree
- */
-static struct RB_TREE_NODE* get_grandparent(struct RB_TREE_NODE* node)
-{
-	if((node != NULL) && (node->parent != NULL))
-		return node->parent->parent;
-	else
-		return NULL;
-}
-
-/*
- * Return the sibling of the parent of a node in a red-black tree
- */
-static struct RB_TREE_NODE* get_uncle(struct RB_TREE_NODE* node)
-{
-	struct RB_TREE_NODE* grand = get_grandparent(node);
-	if(grand == NULL)
-		return NULL;
-	else if(grand->left_child == node->parent)
-		return grand->right_child;
-	else
-		return grand->left_child;
 }	
-
-/*
- * Left tree rotation
- */
-static void rotate_left(struct RB_TREE_NODE* root)
-{
-	struct RB_TREE_NODE* q = root->right_child;
-	/*
-	 * Make q the new root
-	 */
-	if(root->parent != NULL)
-	{
-		if(root->parent->right_child == root)
-		{
-			root->parent->right_child = q;
-		}
-		else
-		{
-			root->parent->left_child = q;
-		}
-	}
-	q->parent = root->parent;
-
-	/*
-	 * Set original root's right child to be q's left child
-	 */
-	root->right_child = q->left_child;
-	root->right_child->parent = root;
-
-	/*
-	 * Set q's left child to be the original root
-	 */
-	q->left_child = root;
-	q->left_child->parent = q;
-}
-
-/*
- * Right tree rotation
- */
-static void rotate_right(struct RB_TREE_NODE* root)
-{
-	struct RB_TREE_NODE* p = root->left_child;
-	/*
-	 * Make p the new root
-	 */
-	if(root->parent != NULL)
-	{
-		if(root->parent->right_child == root)
-		{
-			root->parent->right_child = p;
-		}
-		else
-		{
-			root->parent->left_child = p;
-		}
-	}
-	p->parent = root->parent;
-
-	/*
-	 * Set the original root's left child to be p's right child
-	 */
-	root->left_child = p->right_child;
-	root->left_child->parent = root;
-
-	/*
-	 * Set p's right child to be the original root
-	 */
-	p->right_child = root;
-	p->right_child->parent = p;
-}
-
-/*
- * If inserting under a red parent that has a black sibling
- */
-static void tree_add_c5(struct RB_TREE_NODE* node)
-{
-	struct RB_TREE_NODE* grand = get_grandparent(node);
-
-	node->parent->col = BLACK;
-	grand->col = RED;
-	/*
-	 * If the node is the left child of the parent and the parent
-	 * is the left child of the grandparent
-	 */
-	if((node == node->parent->left_child) && (node->parent == grand->left_child))
-	{
-		rotate_right(grand);
-	}
-	/*
-	 * If the node is the right child of the parent and the parent
-	 * is the right child of the grandparent
-	 */
-	else
-	{
-		rotate_left(grand);
-	}
-}
-
-/*
- * If inserting under a red parent that has a black sibling
- */
-static void tree_add_c4(struct RB_TREE_NODE* node)
-{
-	struct RB_TREE_NODE* grand = get_grandparent(node);
-
-	/*
-	 * If the node is the right child of the parent and the parent is the left child
-	 * of the grandparent
-	 */
-	if((node == node->parent->right_child) && (node->parent == grand->left_child))
-	{
-		rotate_left(node->parent);
-		node = node->left_child;
-	}
-	/*
-	 * If the node is the left child of the parent and the parent is the right child of
-	 * the grandparent
-	 */
-	else if((node == node->parent->left_child) && (node->parent == grand->right_child))
-	{
-		rotate_right(node->parent);
-		node = node->right_child;
-	}
-	tree_add_c5(node);
-}
-
-/*
- * If inserting under a red parent
- */
-static void tree_add_c3(struct RB_TREE_NODE* node)
-{
-	struct RB_TREE_NODE* uncle = get_uncle(node);
-	struct RB_TREE_NODE* grand;
-
-	/*
-	 * If uncle is also red. I don't think uncle can
-	 * possibly be null, but wikipedia knows all. (TODO)
-	 */
-	if((uncle != NULL) && (uncle->col == RED))
-	{
-		node->parent->col = BLACK;
-		uncle->col = BLACK;
-		grand = get_grandparent(node);
-		grand->col = RED;
-		tree_add_c1(grand);
-	}
-	else
-	{
-		tree_add_c4(node);
-	}
-}
-
-/*
- * If not inserting at the root
- */
-static void tree_add_c2(struct RB_TREE_NODE* node)
-{
-	/*
-	 * If the parent is black
-	 */
-	if(node->parent->col == BLACK)
-		return;
-	else
-		tree_add_c3(node);
-}
-
-/*
- * If inserting at the root
- */
-static void tree_add_c1(struct RB_TREE_NODE* node)
-{
-	if(node->parent == NULL)
-		node->col = BLACK;
-	else
-		tree_add_c2(node);
-}	
-
-/*
- * Makes a leaf node
- */
-static void make_leaf(struct RB_TREE_NODE* l)
-{
-	l->key = 0;
-	l->value = NULL;
-	l->col = BLACK;
-	l->is_leaf = true;
-	l->left_child = NULL;
-	l->right_child = NULL;
-}
-
-/*
- * makes a new node to be insterted into the tree
- */
-static void new_tree_node(long long int key, struct QUEUE_EL* el, struct RB_TREE_NODE* new)
-{
-	new->parent = NULL;
-	new->key = key;
-	new->value = el;
-	new->col = RED;
-	new->is_leaf = false;
-
-	struct RB_TREE_NODE* new_left = malloc(sizeof(struct RB_TREE_NODE));
-	make_leaf(new_left);
-	new_left->parent = new;
-
-	struct RB_TREE_NODE* new_right = malloc(sizeof(struct RB_TREE_NODE));
-	make_leaf(new_right);
-	new_right->parent = new;
-
-	new->left_child = new_left;
-	new->right_child = new_right;
-}
-
-/*
- * Adds an entry to the tree
- * Pointer to pointer works because we only ever
- * insert at a leaf node, which means that there are no
- * children to be redirected.
- */
-static void tree_add_entry(struct RB_TREE_NODE** root, TRANSQUEUE* q, long long int key, struct QUEUE_EL* el)
-{
-
-	if(*root == NULL)
-	{
-		if(free_bytes < (3 * sizeof(struct RB_TREE_NODE)))
-		{
-			dequeue(q);
-		}
-		struct RB_TREE_NODE* new = malloc(sizeof(struct RB_TREE_NODE));
-		new_tree_node(key, el, new);
-		free_bytes -= (3 * sizeof(struct RB_TREE_NODE));
-
-		*root = new;
-		tree_add_c1(*root);
-	}
-	else if((*root)->is_leaf == true)
-	{
-		if(free_bytes < (3 * sizeof(struct RB_TREE_NODE)))
-		{
-			dequeue(q);
-		}
-		struct RB_TREE_NODE* new = malloc(sizeof(struct RB_TREE_NODE));
-		new_tree_node(key, el, new);
-		new->parent = (*root)->parent;
-		free_bytes -= (2 * sizeof(struct RB_TREE_NODE));
-		free(*root);
-		/* the pointer in the parent is redirected */
-		*root = new;
-		tree_add_c1(*root);
-	}
-	else if(key < (*root)->key)
-	{
-		tree_add_entry(&((*root)->left_child), q, key, el);
-	}
-	else if(key > (*root)->key)
-	{
-		tree_add_entry(&((*root)->right_child), q, key, el);
-	}
-}
-
-/*
- * Adds an entry to the tree
- */
-static void tree_add(RED_BLACK_TREE* tree, TRANSQUEUE* q, long long int key, struct QUEUE_EL* el)
-{
-	if(tree_has_entry(tree, key) == false)
-	{
-		tree_add_entry(&(tree->root), q, key, el);
-	}
-}
-
-/*
- * Finds the maximum-key element in the left subtree of root
- */
-static struct RB_TREE_NODE* left_max(struct RB_TREE_NODE* root)
-{
-	struct RB_TREE_NODE* max = root->left_child;
-	while(max->right_child->is_leaf == false)
-	{
-		max = max->right_child;
-	}
-	return max;
-}
-
-/*
- * Finds the minimum-key element in the right subtree of root
- */
-static struct RB_TREE_NODE* right_min(struct RB_TREE_NODE* root)
-{
-	struct RB_TREE_NODE* min = root->right_child;
-	while(min->left_child->is_leaf == false)
-	{
-		min = min->left_child;
-	}
-	return min;
-}
-
-/*
- * Finds the sibling of node.
- */
-static struct RB_TREE_NODE* get_sibling(struct RB_TREE_NODE* node)
-{
-	if(node == node->parent->left_child)
-	{
-		return node->parent->right_child;
-	}
-	else
-	{
-		return node->parent->left_child;
-	}
-}
-
-/*
- * Replace node with child in the tree where node has at most one non-leaf child
- */
-static void replace(struct RB_TREE_NODE* node, struct RB_TREE_NODE* child)
-{
-	/*
-	 * Replace the reference to node in its parent with a
-	 * reference to child
-	 */
-	if(node->parent != NULL)
-	{
-		if(node->parent->left_child == node)
-		{
-			node->parent->left_child = child;
-		}
-		else
-		{
-			node->parent->right_child = child;
-		}
-		child->parent = node->parent;
-	}
-
-	/*
-	 * Free the unused child (a leaf by definition). 
-	 * This might cause problems but I doubt it.
-	 */
-	if(node->right_child == child)
-	{
-		free(node->left_child);
-	}
-	else
-	{
-		free(node->right_child);
-	}
-	free_bytes += sizeof(struct RB_TREE_NODE);
-}
-
-static void tree_del_c1(struct RB_TREE_NODE*);
-
-static void tree_del_c6(struct RB_TREE_NODE* node)
-{
-	struct RB_TREE_NODE* sib = get_sibling(node);
-
-	sib->col = node->parent->col;
-	node->parent->col = BLACK;
-
-	if(node == node->parent->left_child)
-	{
-		sib->right_child->col = BLACK;
-		rotate_left(node->parent);
-	}
-	else
-	{
-		sib->left_child->col = BLACK;
-		rotate_right(node->parent);
-	}
-}
-
-static void tree_del_c5(struct RB_TREE_NODE* node)
-{
-	struct RB_TREE_NODE* sib = get_sibling(node);	
-
-	if(sib->col == BLACK)
-	{
-		if((node == node->parent->left_child) &&
-			(sib->right_child->col == BLACK) &&
-			(sib->left_child->col == RED))
-		{
-			sib->col = RED;
-			sib->left_child->col = BLACK;
-			rotate_right(sib);
-		}
-		else if((node == node->parent->right_child) &&
-			(sib->left_child->col == BLACK) &&
-			(sib->right_child->col == RED))
-		{
-			sib->col = RED;
-			sib->right_child->col = BLACK;
-			rotate_left(sib);
-		}
-	}
-	tree_del_c6(node);
-}
-
-static void tree_del_c4(struct RB_TREE_NODE* node)
-{
-	struct RB_TREE_NODE* sib = get_sibling(node);
-
-	if((node->parent->col == RED) &&
-		(sib->col == BLACK) &&
-		(sib->left_child->col == BLACK) &&
-		(sib->right_child->col == BLACK))
-	{
-		sib->col = RED;
-		node->parent->col = BLACK;
-	}
-	else
-	{
-		tree_del_c5(node);
-	}
-}
-
-static void tree_del_c3(struct RB_TREE_NODE* node)
-{
-	struct RB_TREE_NODE* sib = get_sibling(node);
-
-	if((node->parent->col == BLACK) &&
-		(sib->col == BLACK) &&
-		(sib->left_child->col == BLACK) &&
-		(sib->right_child->col == BLACK))
-	{
-		sib->col = RED;
-		tree_del_c1(node->parent);
-	}
-	else
-	{
-		tree_del_c4(node);
-	}
-}
-
-static void tree_del_c2(struct RB_TREE_NODE* node)
-{
-	struct RB_TREE_NODE* sib = get_sibling(node);
-
-	if(sib->col == RED)
-	{
-		node->parent->col = RED;
-		sib->col = BLACK;
-		if(node == node->parent->left_child)
-		{
-			rotate_left(node->parent);
-		}
-		else
-		{
-			rotate_right(node->parent);
-		}
-	}
-	tree_del_c3(node);
-}
-
-static void tree_del_c1(struct RB_TREE_NODE* node)
-{
-	if(node->parent != NULL)
-	{
-		tree_del_c2(node);
-	}
-}
-
-/*
- * Deletes the appropriate child from a node that has only
- * one non-leaf child
- */
-static void delete_child(struct RB_TREE_NODE* node)
-{
-	struct RB_TREE_NODE* child;
-	if(node->left_child->is_leaf == true)
-	{
-		child = node->right_child;
-	}
-	else
-	{
-		child = node->left_child;
-	}
-	replace(node, child);
-	if(node->col == BLACK)
-	{
-		if(child->col == RED)
-		{
-			child->col = BLACK;
-		}
-		else
-		{
-			tree_del_c1(child);
-		}
-	}
-	free_bytes += sizeof(struct RB_TREE_NODE);
-	free(node);
-}
-
-/*
- * Deletes a node from the tree
- */
-static struct QUEUE_EL* tree_delete_entry(struct RB_TREE_NODE* node)
-{
-	struct QUEUE_EL* ret = node->value;
-
-	if((node->left_child->is_leaf == true) || (node->right_child->is_leaf == true))
-	{
-		delete_child(node);
-	}
-	else
-	{
-		struct RB_TREE_NODE* swap;
-		max_or_min = !(max_or_min && true);
-		if(max_or_min == true)
-		{
-			swap = left_max(node);
-		}
-		else
-		{
-			swap = right_min(node);
-		}
-		node->value = swap->value;
-		node->key = swap->key;
-		tree_delete_entry(swap);
-	}
-	return ret;
-}
-
 /*
  * Deletes the entry for the message in the tree and returns
  * the address of the entry for the message in the queue.
  */
-static struct QUEUE_EL* tree_delete(RED_BLACK_TREE* tree, long long int key)
+static struct QUEUE_EL* tree_delete(int key)
 {
-	struct RB_TREE_NODE* root = tree->root;
-	struct RB_TREE_NODE* found = NULL;
-	while((root != NULL) && (found == NULL))
-	{
-		if(root->is_leaf == true)
+		struct QUEUE_EL* ret =  tree_get(key);
+		if(ret->down != NULL)
 		{
-			root = NULL;
+				ret->down->up = ret->up;
 		}
-		else if(root->key == key)
+		if(ret->up != NULL)
 		{
-			found = root;
+				ret->up->down = ret->down;
 		}
-		else if(key < root->key)
-		{
-			root = root->left_child;
-		}
-		else
-		{
-			root = root->right_child;
-		}
-	}
-	if(found != NULL)
-	{
-		return tree_delete_entry(found);
-	}
-	else 
-	{
-		return NULL;
-	}
+		return ret;
 }
 
 /*
@@ -872,10 +216,10 @@ static TRANSQUEUE* new_queue()
 /*
  * Returns true if the queue is empty
  */
-   static bool is_empty(TRANSQUEUE* q)
-   {
-   return ((q->top->down == NULL) || (q->bottom->up == NULL));
-   }
+static bool is_empty(TRANSQUEUE* q)
+{
+		return ((q->top->down == NULL) || (q->bottom->up == NULL));
+}
 
 /*
  * Removes the element at the front of the queue. Returns the
@@ -891,21 +235,21 @@ static TRANSQUEUE* new_queue()
  */
 static DATAGRAM* dequeue(TRANSQUEUE* q)
 {
-	if(is_empty(q))
-	{
-		return NULL;
-	}
-	else
-	{
-		DATAGRAM* d = q->bottom->frags;
-		tree_delete(tree_map, q->bottom->key);
-		q->bottom = q->bottom->up;
-		free(q->bottom->down);
-		q->bottom->down = NULL;
-		free_bytes += sizeof(struct QUEUE_EL);
-		free_bytes += (d->frag_count * sizeof(DATAGRAM));
-		return d;
-	}
+		if(is_empty(q))
+		{
+				return NULL;
+		}
+		else
+		{
+				DATAGRAM* d = q->bottom->frags;
+				tree_delete(q->bottom->key);
+				q->bottom = q->bottom->up;
+				free(q->bottom->down);
+				q->bottom->down = NULL;
+				free_bytes += sizeof(struct QUEUE_EL);
+				free_bytes += (d->frag_count * sizeof(DATAGRAM));
+				return d;
+		}
 }
 
 /*
@@ -918,13 +262,12 @@ static DATAGRAM* dequeue(TRANSQUEUE* q)
  */
 static bool enqueue(TRANSQUEUE* q, DATAGRAM* dat)
 {
-	int key = make_key(dat->source, dat->msg_num);
-	struct QUEUE_EL* el = tree_get(tree_map, key);
-	if(el == NULL)
-	{
-		el = malloc(sizeof(struct QUEUE_EL));
-		el->frags = malloc((dat->frag_count) * sizeof(DATAGRAM));
-		tree_add(tree_map, q, key, el);
+		int key = make_key(dat->source, dat->msg_num);
+		struct QUEUE_EL* el = tree_get(key);
+		if(el == NULL)
+		{
+				el = malloc(sizeof(struct QUEUE_EL));
+				el->frags = malloc((dat->frag_count) * sizeof(DATAGRAM));
 
 		int bytes_used = sizeof(struct QUEUE_EL) +  (dat->frag_count * sizeof(DATAGRAM));
 		while(free_bytes < bytes_used)
@@ -955,7 +298,8 @@ static bool enqueue(TRANSQUEUE* q, DATAGRAM* dat)
  */
 static DATAGRAM* queue_delete(TRANSQUEUE* q, int src, int message_num)
 {
-	struct QUEUE_EL* temp = tree_delete(tree_map, make_key(src, message_num));
+	struct QUEUE_EL* temp = tree_delete(make_key(src, message_num));
+	printf("Node: %d queue_delete, deletion from tree successful", nodeinfo.nodenumber);
 	if (temp == NULL)
 		return NULL;
 	else
@@ -1038,6 +382,7 @@ void transport_recv(char* msg, int len, CnetAddr sender)
 	/* 
 	 * Pass up 
 	 */
+	printf("Node %d: transport_recv, frag_count = %d\n", nodeinfo.nodenumber, d->frag_count);
 	if(d->frag_count == 1)
 	{
 		message_receive(d->msg_frag, d->msg_size, sender);
@@ -1045,13 +390,16 @@ void transport_recv(char* msg, int len, CnetAddr sender)
 	else
 	{
 		bool all_received = enqueue(buff, d);
+		printf("Node %d: transport_recv, enqueued", nodeinfo.nodenumber);
 		if(all_received == true)
 		{
 			/*
 			 * Reassemble message
 			 */
 			DATAGRAM* frags = queue_delete(buff, d->source, d->msg_num);
-			qsort(frags, d->frag_count, sizeof(DATAGRAM), comp); 
+			printf("Node %d: transport_recv, deleted from queue", nodeinfo.nodenumber);
+			qsort(frags, d->frag_count, sizeof(DATAGRAM), comp);
+			printf("Node %d: transport_recv, qsorted", nodeinfo.nodenumber);
 			int num_frags = d->frag_count;
 			char* built_msg = malloc(num_frags * MAX_FRAGMENT_SIZE * sizeof(char));
 			int built_msg_size = 0;
@@ -1097,37 +445,8 @@ void transport_datagram(char* msg, int len, CnetAddr destination)
 	int src = nodeinfo.nodenumber;
 	int msg_num = ++msg_num_counter;
 	int frag_num = 0;
-	printf("Node %d Transport: init trans_datagram done\n", nodeinfo.nodenumber);
-	/*
-	 * if the message is of length zero
-	 */
-	if(num_frags_needed == 0)
-	{		
-			printf("Node %d Transport: got num_frags = 0\n", nodeinfo.nodenumber);
-			/*
-			 * Make new datagram
-			 */
-			DATAGRAM* d = malloc(DATAGRAM_HEADER_SIZE); 
+	printf("Node %d Transport: init trans_datagram, num_frags = %d\n", nodeinfo.nodenumber, num_frags_needed);
 
-			d->msg_size = 0;
-			d->source = src;
-			d->msg_num = msg_num;
-			d->frag_num = frag_num++;
-			d->frag_count = num_frags_needed;
-
-			/*
-			 * Set the checksum
-			 */
-			d->checksum = CNET_crc32(((unsigned char *) d) + offsetof(DATAGRAM, msg_size), 
-					sizeof(DATAGRAM) - sizeof(d->checksum) - MAX_FRAGMENT_SIZE); 
-
-			/*
-			 * Send it and free the memory
-			 */
-			printf("Node %d Transport: about to net_send\n", nodeinfo.nodenumber);
-			net_send(((char*) d), DATAGRAM_HEADER_SIZE, destination);
-			free(d);
-	}
 	/*
 	 * Break the message into fragments
 	 */
@@ -1135,9 +454,9 @@ void transport_datagram(char* msg, int len, CnetAddr destination)
 	{
 		/*
 		 * if it is the last fragment of the message:
-		 */
+		 *//*
 		if((i == num_frags_needed - 1)) 
-		{
+		{ */
 			int remainder = len % MAX_FRAGMENT_SIZE;
 			if (remainder == 0)
 				remainder = MAX_FRAGMENT_SIZE;
@@ -1170,15 +489,16 @@ void transport_datagram(char* msg, int len, CnetAddr destination)
 			printf("Node %d Transport: about to net_send\n", nodeinfo.nodenumber);
 			net_send(((char*) d), DATAGRAM_HEADER_SIZE + remainder, destination);
 			free(d);
-		}
+		/*}*/
 		/*
 		 * if it's not the last fragment of the message:
 		 */
+		/*
 		else 
 		{
-			/*
-			 * Make a new datagram
-			 */
+			
+			 // Make a new datagram
+			 
 			DATAGRAM* d = malloc(sizeof(DATAGRAM));
 
 			d->msg_size = MAX_FRAGMENT_SIZE;
@@ -1187,24 +507,21 @@ void transport_datagram(char* msg, int len, CnetAddr destination)
 			d->frag_num = frag_num++;
 			d->frag_count = num_frags_needed;
 
-			/*
-			 * copy over a part of a the message. parts are not null-terminated 
-			 */
+			
+			 // copy over a part of a the message. parts are not null-terminated 
+			 
 			memcpy(d->msg_frag, msg + (i * MAX_FRAGMENT_SIZE), MAX_FRAGMENT_SIZE);
 
-			/*
-			 * Set the checksum
-			 */
+						 // Set the checksum 
 			d->checksum = CNET_crc32(((unsigned char *) d) + offsetof(DATAGRAM, msg_size), 
 					sizeof(DATAGRAM) - sizeof(d->checksum)); 
 
-			/*
-			 * Send it and free the memory
-			 */
+			
+			 //Send it and free the memory
 			printf("Node %d Transport: about to net_send\n", nodeinfo.nodenumber);
 			net_send(((char*)d), sizeof(DATAGRAM), destination);
 			free(d);
-		}
+		}*/
 	}
 }
 
@@ -1219,7 +536,6 @@ void transport_init()
 	msg_num_counter = 0;	
 	free_bytes = TRANSPORT_BUFF_SIZE;
 	buff = new_queue();
-	tree_map = new_red_black_tree();
 	max_or_min = false;
 }
 
