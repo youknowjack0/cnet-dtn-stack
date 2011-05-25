@@ -46,8 +46,7 @@ static EVENT_HANDLER(listening)
 
 EVENT_HANDLER(start_sending)
 {
-	if(nodeinfo.nodenumber == 0)
-			CNET_enable_application(ALLNODES);
+			
 }
 
 void message_receive(char* data, int len, CnetAddr sender)
@@ -103,7 +102,9 @@ EVENT_HANDLER(reboot_node)
 //  PREPARE TO TALK VIA OUR WIRELESS CONNECTION
 	CNET_set_wlan_model( my_WLAN_model );
 	CNET_start_timer(EV_TALKING, TALK_FREQUENCY, 0);
-	CNET_start_timer(EV_TIMER6, 10*ORACLEINTERVAL, 0);
+	//if(nodeinfo.nodenumber == 0)
+	CHECK(CNET_enable_application(ALLNODES));
+		CNET_start_timer(EV_TIMER6, 10*ORACLEINTERVAL, 0);
 	
 	
 	
