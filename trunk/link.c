@@ -318,7 +318,7 @@ void link_init()
 	sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, 0);
 }
 
-/* TESTING CODE
+/*
 EVENT_HANDLER(app_rdy)
 {
 
@@ -337,13 +337,6 @@ EVENT_HANDLER(reboot_node)
 	
 	if(nodeinfo.nodenumber == 0)
 		CNET_enable_application(ALLNODES);
-}
-*/
-/*
-int main(int argc, char* argv[])
-{
-	link_init();
-	
 }
 */
 
