@@ -1,19 +1,18 @@
-compile			= "dtn.c link.c network.c oracle.c transport.c fakeapp.c"
+compile			= "dtn.c link.c network.c oracle.c transport.c walking.c"
 
-bandwidth		= 56Kbps,
+minmessagesize	= 500 bytes
+maxmessagesize	= 10000 bytes
 
-messagerate             = 1000ms,
-propagationdelay        = 2500ms,
+rebootargs	= "uwa1.map"
+mapimage	= "uwa1.gif"
 
-host perth {
-    x=50 y=50
-    winx=0, winy=50
-    link to sydney {
-    }
-}
+mapwidth	= 135
+mapheight	= 110
+mapgrid		= 20
+mapscale	= 0.125
 
-host sydney {
-    x=400 y=50
-    winx=550, winy=50
-    east east east east east of perth
-}
+mobile iPod00 { wlan { } }
+mobile iPod01 { wlan { } }
+mobile iPod02 { wlan { } }
+mobile iPod03 { wlan { } }
+mobile iPod04 { wlan { } }
