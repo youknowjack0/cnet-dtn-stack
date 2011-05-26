@@ -20,13 +20,15 @@
 #include "dtn.h"
 #include <stdlib.h>
 
-
 /* structure to represent node and location */
 typedef struct 
 {
 	CnetAddr addr;
 	CnetPosition loc;
 } NODELOCATION;
+
+#define ORACLE_HEADER_SIZE (sizeof(NODELOCATION) + sizeof(uint32_t)*2 + sizeof(uint16_t))
+#define MAX_ORACLE_PAYLOAD (MAX_PACKET_SIZE - ORACLE_HEADER_SIZE)
 
 /* the packet structure for oracle information transmission */
 typedef struct 
@@ -35,7 +37,7 @@ typedef struct
 	NODELOCATION senderLocation;
 	uint32_t freeBufferSpace; /* how many bytes of space available in transmitting nodes' public buffer */
 	uint16_t locationsSize; /* how many elements in locations */
-	NODELOCATION locations[NUM_NODES]; /* array of (last known) locations of known hosts */	
+	NODELOCATION locations[MAX_ORACLE_PAYLOAD]; /* array of (last known) locations of known hosts */	
 } OraclePacket;
 
 /* structure to store information about neighbours */
@@ -89,7 +91,45 @@ static void savePosition(NODELOCATION n)
 static uint32_t checksum_oracle_packet(OraclePacket * p) 
 {
 	/* TODO: might need to deal with struct field offset? */
-	return CNET_crc32((unsigned char*)p + sizeof(p->checksum), sizeof(p) - sizeof(p->locations) + sizeof(NODELOCATION)*p->locationsSize - sizeof(p->checksum));
+	return CNET_crc32((unsigned char*)p + sizeof(p->checksum), sizeof(OraclePacket) - sizeof(p->locations) + sizeof(NODELOCATION)*p->locationsSize - sizeof(p->checksum));
+}
+
+/* remove a specific item from the DB
+ */
+static void dbRemove(int index) {
+	if(index != dbsize-1) {
+		for(int i=index+1;i<dbsize;i++) {
+			positionDB[i-1] = positionDB[i]; /* shift entries */	
+		}
+	}
+	dbsize--;
+	positionDB = realloc(positionDB, sizeof(Neighbour)*dbsize);
+		
+}
+
+/* prune oldest entry from the local db
+ * only invoked in edge cases
+ */
+static void pruneOldestRecord() {
+	uint64_t oldest = -1;
+	int oldestIndex = -1;
+	for(int i=0;i<dbsize;i++) {
+		if(positionDB[i].lastBeacon < oldest || oldestIndex == -1) {
+			oldest = positionDB[i].lastBeacon;
+			oldestIndex = i;
+		}
+	}
+	dbRemove(oldestIndex);
+}
+
+/* prune old info from the db if it is overfull
+ * no need to optimise this will only be invoked in edge cases
+ */
+static void pruneDB() {
+	int n = dbsize - (MAX_ORACLE_PAYLOAD / sizeof(NODELOCATION));
+	for(int i=0;i<n;i++) {
+		pruneOldestRecord();
+	}
 }
 
 /* broadcast info about this node and other known nodes
@@ -99,6 +139,13 @@ EVENT_HANDLER(sendOracleBeacon)
 	/* possible todo: restructure the Neighbour data so that this can be done with one memcpy */
 	printf("Node %d: starting beacon send\n", nodeinfo.nodenumber);
 	OraclePacket p;
+	
+	/* if cant send our DB in one beacon, then prune the DB */
+	if(dbsize > (MAX_ORACLE_PAYLOAD / sizeof(NODELOCATION))) {
+		pruneDB();
+	}
+
+	/* copy our db to the packet */
 	for(int i=0;i<dbsize;i++) 
 	{
 		p.locations[i] = positionDB[i].nl;
@@ -220,6 +267,11 @@ void oracle_recv(char * msg, int len, CnetAddr rcv)
 	OraclePacket * p = (OraclePacket *) msg;
 	if(checksum_oracle_packet(p)==p->checksum) 
 	{
+		printf("Node %d oracle: Got an oracle packet from %d; contents:\n", nodeinfo.nodenumber, p->senderLocation.addr);
+		printf("\tNode %d is at %d,%d\n", p->senderLocation.addr, p->senderLocation.loc.x, p->senderLocation.loc.y);
+		for(int i=0;i<p->locationsSize;i++) {
+			printf("\tNode %d spotted @ %d,%d\n", p->locations[i].addr, p->locations[i].loc.x, p->locations[i].loc.y);
+		}
 		processBeacon(p);
 	}
 }
@@ -228,21 +280,9 @@ void oracle_recv(char * msg, int len, CnetAddr rcv)
  */
 void oracle_init() 
 {
-	dbsize = NUM_NODES;
-	positionDB = malloc(sizeof(Neighbour) * dbsize);
-	for(int i = 0; i < dbsize; i++) {
-		Neighbour n;
-		NODELOCATION nodel;
-		nodel.addr = i;
-		CnetPosition a;
-		a.x = 0;
-		a.y = 0;
-		nodel.loc = a;
-		n.freeBufferSpace = 0;
-		n.lastBeacon = 0;
-		n.nl = nodel;
-		positionDB[i] = n;
-	}
+	dbsize = 0;
+	positionDB = NULL;
+
 	CNET_srand(nodeinfo.time_of_day.sec + nodeinfo.nodenumber);
 	/* schedule periodic transmission of topology information, or whatever */		
 	CNET_set_handler(EV_TIMER7, sendOracleBeacon, 0);
