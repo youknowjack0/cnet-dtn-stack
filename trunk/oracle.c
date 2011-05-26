@@ -92,6 +92,7 @@ static uint32_t checksum_oracle_packet(OraclePacket * p)
 {
 	/* TODO: might need to deal with struct field offset? */
 	return CNET_crc32((unsigned char*)p + sizeof(p->checksum), sizeof(OraclePacket) - sizeof(p->locations) + sizeof(NODELOCATION)*p->locationsSize - sizeof(p->checksum));
+	//return 0;
 }
 
 /* remove a specific item from the DB
@@ -137,7 +138,7 @@ static void pruneDB() {
 EVENT_HANDLER(sendOracleBeacon)
 {
 	/* possible todo: restructure the Neighbour data so that this can be done with one memcpy */
-	printf("Node %d: starting beacon send\n", nodeinfo.nodenumber);
+	/*printf("Node %d: starting beacon send\n", nodeinfo.nodenumber);*/
 	OraclePacket p;
 	
 	/* if cant send our DB in one beacon, then prune the DB */
@@ -159,7 +160,7 @@ EVENT_HANDLER(sendOracleBeacon)
 	char * pp = (char *)(&(p));	
 	p.checksum = checksum_oracle_packet(&p);
 	/* todo: macro for the packet header */
-	printf("Node %d: preparing to send beacon to link\n", nodeinfo.nodenumber);
+	/*printf("Node %d: preparing to send beacon to link\n", nodeinfo.nodenumber);*/
 	link_send_info(pp, sizeof(p) - sizeof(p.locations) + sizeof(NODELOCATION)*dbsize, ALLNODES);
 	printf("Node %d: sent beacon to link\n", nodeinfo.nodenumber);
 	/* send again later */
@@ -186,19 +187,19 @@ static void processBeacon(OraclePacket * p)
 
 /* find the last known position of a node (a), sets l
  * equal to the last known position
- * note: location (l) will be set to NULL if there is no
- * last known position for l.
+ * returns false if unknown
  */
-static void queryPosition(CnetPosition * l, CnetAddr a) 
+static bool queryPosition(CnetPosition * l, CnetAddr a) 
 {
 	Neighbour * nbp = bsearch(&a, positionDB, dbsize, sizeof(Neighbour), compareNL);
 	if(nbp==NULL) 
 	{
-		l = NULL;
+		return false;
 	} 
 	else 
 	{
 		*l = nbp->nl.loc;
+		return true;
 	}
 }
 
@@ -235,7 +236,13 @@ bool isCloser(CnetPosition a, CnetPosition b, CnetPosition c, int interval)
  */
 bool get_nth_best_node(CnetAddr * ptr, int n, CnetAddr dest, size_t message_size) 
 {
+	printf("Node %d Oracle: Hunting for a route to %d...\n", nodeinfo.nodenumber, dest);
 	CnetTime t = nodeinfo.time_in_usec;
+	CnetPosition destPos;  
+	if(!queryPosition(&destPos, dest)) {
+		printf("Node %d Oracle: I've never heard of %d!\n", nodeinfo.nodenumber, dest);
+		return false;
+	}
 	if(n!=0) return false;
 	else 
 	{
@@ -243,17 +250,21 @@ bool get_nth_best_node(CnetAddr * ptr, int n, CnetAddr dest, size_t message_size
 		{
 			if(t > positionDB[i].lastBeacon + ORACLEWAIT ) continue; /* skip this neighbour if we haven't had a beacon from it recently */ 
 			if((int)positionDB[i].freeBufferSpace < message_size) continue; /* enough buffer space for this massage */
-			CnetPosition destPos; queryPosition(&destPos, dest); 
 			CnetPosition nextPos = positionDB[i].nl.loc;
 			CnetPosition myPos; CNET_get_position(&myPos, NULL);	
-			if( isCloser(myPos, nextPos, destPos, MINDIST) ) 
+			if( positionDB[i].nl.addr == dest ) {	
+				*ptr = positionDB[i].nl.addr;
+				printf("Node %d Oracle: %d is the target, and in range!\n", nodeinfo.nodenumber, *ptr);
+				return true;
+			} else if( isCloser(myPos, nextPos, destPos, MINDIST) ) 
 			{
 				*ptr = positionDB[i].nl.addr;
-				printf("Node %d Oracle: set address for next to %d\n", nodeinfo.nodenumber, *ptr);
+				printf("Node %d Oracle: I think %d is closer to %d than us\n", nodeinfo.nodenumber, *ptr, (int)dest);
 				return *ptr != nodeinfo.nodenumber;
 			}
 		}
 	}
+	printf("Node %d Oracle: I can't find anyone closer to %d than us!\n", nodeinfo.nodenumber, (int)dest);
 	return false;
 
 }
