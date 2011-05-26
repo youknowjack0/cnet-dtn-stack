@@ -1,0 +1,12 @@
+# Buildings of Social Sciences, Law, and Student Services
+# Coordinates are in metres - close, but not exact
+#
+#	x0	y0	x1	y1
+object	15	13	54	32
+object	59	13	85	33
+object	89	2	118	28
+object	89	32	118	63
+object	58	39	80	66
+object	14	48	55	100
+object	11	104	28	138
+object	27	118	62	138
