@@ -50,11 +50,15 @@ static STACK* new_stack()
 {
 	STACK* s = malloc(sizeof(STACK));
 	struct STACK_EL* el = malloc(sizeof(struct STACK_EL));
+/*
 	el->up = NULL;
 	el->down = NULL;
 	el->p = NULL;
 	s->top = el;
 	s->bottom = el;
+*/
+	s->top = NULL;
+	s->bottom = NULL;
 	return s;
 }
 
@@ -64,7 +68,7 @@ static STACK* new_stack()
  */
 static bool is_empty(STACK* s) 
 {
-	return s->top->down == NULL;
+	return ((s->top == NULL) || (s->bottom == NULL));
 }
 
 
@@ -79,10 +83,14 @@ static PACKET* dequeue(STACK* s)
 	}
 	else 
 	{
-		PACKET* tmp = s->bottom->p;
-		s->bottom = s->bottom->up;
-		free(s->bottom->down);
-		s->bottom->down = NULL;
+		QUEUE_EL* del = s->bottom;
+		PACKET* tmp = del->p;
+		s->bottom = del->up;
+		free(del);
+		if(s->bottom != NULL)
+		{
+			s->bottom->down = NULL;
+		}
 		free_bytes += (sizeof(struct STACK_EL) + PACKET_HEADER_SIZE + tmp->h.len);
 		return tmp;
 	}
@@ -104,7 +112,14 @@ static void push(STACK* s, PACKET* pack)
 	e->p = pack;
 	e->down = s->top;
 	e->up = NULL;
-	s->top->up = e;
+	if(is_empty(s))
+	{
+		s->bottom = e;
+	}
+	else
+	{
+		s->top->up = e;
+	}
 	s->top = e;
 	free_bytes -= mem_used;
 }
@@ -121,12 +136,16 @@ static PACKET* pop(STACK* s)
 	}
 	else 
 	{
-		PACKET* tmp = s->top->p;
-		s->top = s->top->down;
-		free(s->top->up);
-		s->top->up = NULL;
+		struct STACK_EL* tmp = s->top;
+		PACKET* ret = tmp->p;	
+		s->top = tmp->down;
+		free(tmp);
+		if(s->top != NULL)
+		{
+			s->top->up = NULL;
+		}
 		free_bytes += (sizeof(struct STACK_EL) + PACKET_HEADER_SIZE + tmp->h.len);
-		return tmp;
+		return ret;
 	}
 }
 
@@ -134,10 +153,10 @@ static PACKET* pop(STACK* s)
  * returns but does not remove the top of a stack
  * NOT USED
  *
-   static packet* peek(STACK* s) 
-   {
-   if (is_empty(s)) 
-   {
+ static packet* peek(STACK* s) 
+ {
+ if (is_empty(s)) 
+ {
    return NULL;
    }
    else 

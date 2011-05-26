@@ -461,7 +461,7 @@ void transport_datagram(char* msg, int len, CnetAddr destination)
 			/*
 			 * copy over a part of a the message. parts are not null-terminated 
 			 */
-			memcpy(d->msg_frag, msg + (i * MAX_FRAGMENT_SIZE), remainder);
+			memcpy(d->msg_frag, &(msg[i * MAX_FRAGMENT_SIZE]), remainder);
 
 			/*
 			 * Set the checksum
@@ -497,7 +497,7 @@ void transport_datagram(char* msg, int len, CnetAddr destination)
 			
 			 // copy over a part of a the message. parts are not null-terminated 
 			 
-			memcpy(d->msg_frag, msg + (i * MAX_FRAGMENT_SIZE), MAX_FRAGMENT_SIZE);
+			memcpy(d->msg_frag, &(msg[i * MAX_FRAGMENT_SIZE]), MAX_FRAGMENT_SIZE);
 
 						 // Set the checksum 
 			d->h.checksum = 0;
