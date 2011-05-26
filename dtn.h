@@ -4,7 +4,7 @@
 #include <string.h>
 
 /* some constants here, such as maximum frame lengths */
-#define ORACLEINTERVAL 3000000 /* oracle broadcast interval in microseconds */
+#define ORACLEINTERVAL 6000000 /* oracle broadcast interval in microseconds */
 #define ORACLEWAIT (ORACLEINTERVAL*2) /* time a neighbour will be 'live' after a beacon */
 #define MINDIST 2
 /* This is the maximum size of the PAYLOAD of a datagram, not the datagram including the header! */
