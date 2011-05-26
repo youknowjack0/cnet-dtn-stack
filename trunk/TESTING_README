@@ -1,0 +1,29 @@
+The tests are:
+density_test.sh
+maxmessagesize_test.sh
+mobility_test.sh
+freq_test.sh
+
+They all test against "effectiveness" which is the percentage of messages delivered from created
+right now all they produce is a result.* file that will have 3 columns. The 2nd is the number of
+messages generated and the 3rd is the number delivered. The 1st is the parameter that we're testing over
+for each of the tests respectively (and with units) they are:
+
+number of nodes
+max message size (bytes) - fixed min size
+node mobility (altered the constant in walking.c)
+message generation frequency (seconds) - has fixed max message size
+
+You can change any of the topology files if you want to tweak the tests at all
+e.g. change the message sizes, message generation frequency, number of nodes etc.
+
+If you want to change any of the affects to test you can just go into the shell scripts
+and change the regex argument to grep to the name of the field you want as per cnet statistics output
+(running with -s tag). e.g. if you want to test average delivery time you would put in
+'Average delivery time'
+
+These don't produce any plots but at least they're tests I suppose, there's probably a lot of constraints
+I've imposed in the topology files but that should be relatively easy to change if you want.
+
+The frequency test wasn't really working on the revision I was using (an old one), it just segfaults or hangs
+so if you really wanted you could probably replace that with a buffer size test or something.

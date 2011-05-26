@@ -14,10 +14,15 @@ mapscale	= 0.125
 
 mobile iPod00 { wlan { } }
 mobile iPod01 { wlan { } }
+
 mobile iPod02 { wlan { } }
 mobile iPod03 { wlan { } }
 mobile iPod04 { wlan { } }
+
+
 mobile iPod06 { wlan { } }
 mobile iPod07 { wlan { } }
 mobile iPod08 { wlan { } }
+mobile iPod09 { wlan { } }
+mobile iPod10 { wlan { } }
 
