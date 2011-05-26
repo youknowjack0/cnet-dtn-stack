@@ -375,6 +375,7 @@ void transport_recv(char* msg, int len, CnetAddr sender)
 			/*
 			 * Reassemble message
 			 */
+			printf("All fragments have been received\n");
 			DATAGRAM* frags = queue_delete(buff, d->h.source, d->h.msg_num);
 			printf("Node %d: transport_recv, deleted from queue\n", nodeinfo.nodenumber);
 			qsort(frags, d->h.frag_count, sizeof(DATAGRAM), comp);
