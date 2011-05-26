@@ -171,14 +171,10 @@ static PACKET* pop(STACK* s)
  */
 static void try_to_send(PACKET* pack, STACK* s) 
 {
+	printf("Node%d Network: Trying to send\n", nodeinfo.nodenumber);
 	int mem_used = PACKET_HEADER_SIZE + pack->len;
 	CnetAddr add_p;
-	
-	printf("Node %d Network: going to oracle\n",nodeinfo.nodenumber);
-	
 	bool can_send = get_nth_best_node(&add_p, 0, pack->dest, mem_used);
-	
-	printf("Node %d Network: got past oracle\n",nodeinfo.nodenumber);
 
 	if (can_send) 
 	{
@@ -188,6 +184,7 @@ static void try_to_send(PACKET* pack, STACK* s)
 		 * the DLL buffer.
 		 * TODO: check the DLL buffer
 		 */
+		printf("Node%d Network: Can send, to %d\n", nodeinfo.nodenumber, add_p);
 		link_send_data((char*) pack, mem_used, add_p);
 		free(pack);
 	}
@@ -196,8 +193,40 @@ static void try_to_send(PACKET* pack, STACK* s)
 		/* 
 		 * buffer it.
 		 */
+		printf("Node%d Network: Couldn't send buffering\n", nodeinfo.nodenumber);
 		push(s, pack);
 	}
+}
+
+/*
+ * Called by oracle when topology data is updated (beacon is received)
+ */
+void net_send_buffered() 
+{
+	/*
+	 * Attempt to send buffered messages. Use a temporary stack to 
+	 * store packets that are popped but can't be sent. Then, when
+	 * when we're done, simply push the whole temporary stack back
+	 * onto the buffer. Free the memory for any packets that are sent.
+	 */
+	printf("Node%d Network: Clearing buffer\n", nodeinfo.nodenumber);
+	STACK* temp_stack = new_stack();
+
+	PACKET* tmp = pop(buff);
+	while(tmp != NULL) 
+	{
+		try_to_send(tmp, temp_stack);
+		tmp = pop(buff);
+	}
+
+	tmp = pop(temp_stack);
+	while(tmp != NULL) 
+	{
+		push(buff, tmp);
+		tmp = pop(temp_stack);
+	}
+
+	free(temp_stack);
 }
 
 /*
@@ -218,6 +247,7 @@ bool net_send(char* msg, int len, CnetAddr dst)
 	 * will return false
 	 *
 	 */
+	//net_send_buffered();
 	printf("Node %d Network: got msg with dest = %d\n", nodeinfo.nodenumber, dst);
 	int mem_used = PACKET_HEADER_SIZE + len;
 	PACKET* pack = malloc(mem_used);
@@ -288,35 +318,7 @@ void net_recv(char* msg, int len, CnetAddr src)
 	}
 }
 
-/*
- * Called by oracle when topology data is updated (beacon is received)
- */
-void net_send_buffered() 
-{
-	/*
-	 * Attempt to send buffered messages. Use a temporary stack to 
-	 * store packets that are popped but can't be sent. Then, when
-	 * when we're done, simply push the whole temporary stack back
-	 * onto the buffer. Free the memory for any packets that are sent.
-	 */
-	STACK* temp_stack = new_stack();
 
-	PACKET* tmp = pop(buff);
-	while(tmp != NULL) 
-	{
-		try_to_send(tmp, temp_stack);
-		tmp = pop(buff);
-	}
-
-	tmp = pop(temp_stack);
-	while(tmp != NULL) 
-	{
-		push(buff, tmp);
-		tmp = pop(temp_stack);
-	}
-
-	free(temp_stack);
-}
 
 /*
  * called at program start

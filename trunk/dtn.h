@@ -46,6 +46,7 @@ int get_private_nbytes_free();
 bool net_send( char * msg, int len, CnetAddr dst);
 void net_recv( char * msg, int len, CnetAddr dst);
 void net_init();
+void net_send_buffered();
 
 /* oracle.c */
 bool get_nth_best_node(CnetAddr * ptr, int n, CnetAddr dest, size_t messageSize);

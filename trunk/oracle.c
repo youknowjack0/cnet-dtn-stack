@@ -285,6 +285,7 @@ void oracle_recv(char * msg, int len, CnetAddr rcv)
 		}
 		processBeacon(p);
 	}
+	net_send_buffered();
 }
 
 /* function is called on program intialisation 
