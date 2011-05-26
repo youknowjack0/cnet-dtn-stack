@@ -278,10 +278,13 @@ static DATAGRAM* queue_delete(TRANSQUEUE* q, int src, int message_num)
 		return NULL;
 	else
 	{
-		if((temp->down == NULL) && (temp->up == NULL))
+		if(q->bottom == temp)
 		{
-			q->bottom = NULL;
-			q->top = NULL;
+			q->bottom = temp->up;
+		}
+		if(q->top == temp)
+		{
+			q->top = temp->down;
 		}
 		if(temp->down != NULL)
 		{
