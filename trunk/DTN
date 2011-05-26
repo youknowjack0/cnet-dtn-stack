@@ -13,12 +13,9 @@ mapgrid		= 20
 mapscale	= 0.125
 
 probframecorrupt =  999
-
 mobile iPod00 { 
 x=10, y=10
 wlan { }
-
-
 }
 mobile iPod01 { 
 x=15,y=15
