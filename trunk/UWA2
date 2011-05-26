@@ -1,0 +1,29 @@
+
+compile		= "project.c mapping.c walking.c -lm"
+
+minmessagesize	= 500 bytes
+maxmessagesize	= 10000 bytes
+
+rebootargs	= "uwa2.map"
+mapimage	= "uwa2.gif"
+
+mapwidth	= 123
+mapheight	= 141
+mapgrid		= 20
+mapscale	= 0.25
+
+icontitle	= "%n"
+
+mobile iPod00 { wlan { } }
+mobile iPod01 { wlan { } }
+mobile iPod02 { wlan { } }
+mobile iPod03 { wlan { } }
+mobile iPod04 { wlan { } }
+
+/*
+mobile iPod05 { wlan { } }
+mobile iPod06 { wlan { } }
+mobile iPod07 { wlan { } }
+mobile iPod08 { wlan { } }
+mobile iPod09 { wlan { } }
+ */

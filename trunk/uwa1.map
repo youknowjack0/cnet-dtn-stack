@@ -1,0 +1,17 @@
+# Buildings of CSSE, Earth & Environment, and Geology & Geography
+# Coordinates are in metres - close, but not exact
+#
+#	x0	y0	x1	y1
+object	11	42	61	70
+text	35	55	Computer_Science
+#
+object	11	85	61	103
+text	35	96	Earth_and_Environment
+#
+object	71	10	128	26
+object	103	26	119	51
+text	100	18	Geology
+#
+object	70	84	128	99
+object	103	57	119	94
+text	100	92	Geography
