@@ -258,7 +258,11 @@ static bool enqueue(TRANSQUEUE* q, DATAGRAM* dat)
 
 		el->down = q->top;
 		el->up = NULL;
-		if(q->top != NULL)
+		if(is_empty(q))
+		{
+			q->bottom = el;
+		}
+		else
 		{
 			q->top->up = el;
 		}
