@@ -225,6 +225,7 @@ void net_send_buffered()
 	PACKET* tmp = pop(buff);
 	while(tmp != NULL) 
 	{
+		printf("Attempting to send old packet to %d\n", tmp->h.dest);
 		try_to_send(tmp, temp_stack);
 		tmp = pop(buff);
 	}
