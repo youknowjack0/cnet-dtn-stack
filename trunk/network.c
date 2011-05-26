@@ -49,8 +49,8 @@ int get_private_nbytes_free()
 static STACK* new_stack() 
 {
 	STACK* s = malloc(sizeof(STACK));
-	struct STACK_EL* el = malloc(sizeof(struct STACK_EL));
 /*
+	struct STACK_EL* el = malloc(sizeof(struct STACK_EL));
 	el->up = NULL;
 	el->down = NULL;
 	el->p = NULL;
@@ -83,7 +83,7 @@ static PACKET* dequeue(STACK* s)
 	}
 	else 
 	{
-		QUEUE_EL* del = s->bottom;
+		struct STACK_EL* del = s->bottom;
 		PACKET* tmp = del->p;
 		s->bottom = del->up;
 		free(del);
@@ -144,7 +144,7 @@ static PACKET* pop(STACK* s)
 		{
 			s->top->up = NULL;
 		}
-		free_bytes += (sizeof(struct STACK_EL) + PACKET_HEADER_SIZE + tmp->h.len);
+		free_bytes += (sizeof(struct STACK_EL) + PACKET_HEADER_SIZE + ret->h.len);
 		return ret;
 	}
 }
