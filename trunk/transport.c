@@ -122,6 +122,7 @@ static struct QUEUE_EL* tree_get(int key)
  * Deletes the entry for the message in the tree and returns
  * the address of the entry for the message in the queue.
  */
+/* Not used
 static struct QUEUE_EL* tree_delete(int key)
 {
 		struct QUEUE_EL* ret =  tree_get(key);
@@ -135,7 +136,7 @@ static struct QUEUE_EL* tree_delete(int key)
 		}
 		return ret;
 }
-
+*/
 /*
  ********************************
  * END RED-BLACK TREE FUNCTIONS *
@@ -210,7 +211,6 @@ static DATAGRAM* dequeue(TRANSQUEUE* q)
 		else
 		{
 				DATAGRAM* d = q->bottom->frags;
-				tree_delete(q->bottom->key);
 				q->bottom = q->bottom->up;
 				free(q->bottom->down);
 				q->bottom->down = NULL;
@@ -266,8 +266,7 @@ static bool enqueue(TRANSQUEUE* q, DATAGRAM* dat)
  */
 static DATAGRAM* queue_delete(TRANSQUEUE* q, int src, int message_num)
 {
-	struct QUEUE_EL* temp = tree_delete(make_key(src, message_num));
-	printf("Node: %d queue_delete, deletion from tree successful\n", nodeinfo.nodenumber);
+	struct QUEUE_EL* temp = tree_get(make_key(src, message_num));
 	if (temp == NULL)
 		return NULL;
 	else
