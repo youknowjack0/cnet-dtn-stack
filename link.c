@@ -6,6 +6,7 @@
  */
 #include "dtn.h"
 
+
 #define IDLE_TIMESLOT 			CNET_rand()%idle_freq + 1
 #define ACT_TIMESLOT			CNET_rand()%active_freq + 1
 
@@ -17,11 +18,7 @@
 
 typedef struct 
 {
-	FRAMETYPE	type;
-	int		dest;	// Zero if beacon, so broadcasted
-	int 		src;
-	size_t		len;
-	int checksum;
+	FRAMEHEADER h;
 	char		msg[MAX_PACKET_SIZE];
 } FRAME;
 
@@ -41,8 +38,7 @@ struct queue
 /* end type defs */
 
 
-#define FRAME_HEADER_SIZE2  (sizeof(FRAME) - (sizeof(char)*MAX_PACKET_SIZE))
-#define FRAME_SIZE(f)      (FRAME_HEADER_SIZE2 + f.len)
+#define FRAME_SIZE(f)      (FRAME_HEADER_SIZE + f.len)
 
 /* Global var declarations */
 static	int64_t	idle_freq	= IDLE_FREQ;
@@ -53,7 +49,7 @@ static CnetTimerID sendTimer;
 
 struct queue* buf; 
 
-static FRAME* info; //info frame buffer
+static FRAME* info = NULL; //info frame buffer
 static bool sent_info = false;
 static bool sending_data = false;
 static int numFrames;
@@ -131,13 +127,14 @@ void reset_send_timer()
 
 void send_frame(FRAMETYPE type, CnetAddr dest, size_t len, char* data) 
 {
-	printf("    Node %d: Sending frame\n", nodeinfo.nodenumber);
+	printf("    Node %d: Sending frame %d bytes type %d, ignore %d %d \n", nodeinfo.nodenumber, len, type, FRAME_HEADER_SIZE, FRAME_HEADER_SIZE);
+	assert(len < MAX_PACKET_SIZE);
 	FRAME f;// = malloc(FRAME_HEADER_SIZE + len);
-	f.type = type;
-	f.dest = dest;
-	f.src = nodeinfo.nodenumber;
-	f.len = len;
-	f.checksum = 0;
+	f.h.type = type;
+	f.h.dest = dest;
+	f.h.src = nodeinfo.nodenumber;
+	f.h.len = len;
+	f.h.checksum = 0;
 	size_t framelen;
 	printf("    Node %d: set up header\n", nodeinfo.nodenumber);
 	if(data != NULL) {
@@ -146,12 +143,11 @@ void send_frame(FRAMETYPE type, CnetAddr dest, size_t len, char* data)
 		printf("    Node %d: copied frame\n", nodeinfo.nodenumber);
 	}
 	else  {
-		f.msg[0] = '\0';
-		f.len = strlen(f.msg);
-		framelen = FRAME_HEADER_SIZE + len;
+		f.h.len = 0;
+		framelen = FRAME_HEADER_SIZE;
 	}
-	f.checksum  = CNET_ccitt((unsigned char *)&f, (int)framelen);
-	printf("Node %d: Sending frame with checksum %d, len = %d, dest = %d\n", nodeinfo.nodenumber, f.checksum, framelen, f.dest);
+	f.h.checksum  = CNET_crc32((unsigned char *)&f, (int)framelen);
+	printf("Node %d: Sending frame with checksum %d, len = %d, dest = %d\n", nodeinfo.nodenumber, f.h.checksum, framelen, f.h.dest);
 	//send frame over cnet
 	CHECK(CNET_write_physical_reliable(1, &f, &framelen));
 }
@@ -163,10 +159,10 @@ void link_send_data( char* msg, int len, CnetAddr recv)
 	printf("Node %d Link: got a frame for %d\n", nodeinfo.nodenumber, recv);
 	//put a frame into the frame buffer
 	FRAME f;
-	f.type = DL_DATA;
-	f.dest = recv;
-	f.src = nodeinfo.nodenumber;
-	f.len = len;
+	f.h.type = DL_DATA;
+	f.h.dest = recv;
+	f.h.src = nodeinfo.nodenumber;
+	f.h.len = len;
 	memcpy(f.msg, msg, len);
 	enqueue(buf, f);
 }
@@ -183,11 +179,11 @@ void link_send_info( char* msg, int len, CnetAddr recv)
 	//printf("Node %d: getting info packet of len = %d, dest = %d\n", nodeinfo.nodenumber, len, recv);
 	if(info != NULL)
 		free(info);
-	FRAME* f = malloc(FRAME_HEADER_SIZE + len);
-	f->type = DL_BEACON;
-	f->dest = recv;
-	f->src = nodeinfo.nodenumber;
-	f->len = len;
+	FRAME* f = malloc((FRAME_HEADER_SIZE) + len);
+	f->h.type = DL_BEACON;
+	f->h.dest = recv;
+	f->h.src = nodeinfo.nodenumber;
+	f->h.len = len;
 	memcpy(f->msg, msg, len);
 	info = f;
 	sent_info = false;
@@ -209,7 +205,7 @@ static EVENT_HANDLER(send)
 		if(sent_info == false && info != NULL)
 		{
 			printf("trying to send beacon\n");
-			send_frame(DL_BEACON, info->dest, info->len, info->msg);
+			send_frame(DL_BEACON, info->h.dest, info->h.len, info->msg);
 			free(info);
 			info = NULL;
 			sent_info = true;
@@ -224,7 +220,7 @@ static EVENT_HANDLER(send)
 			printf("Prepping for RTS\n");
 			local_timer = CNET_start_timer(EV_TIMER1, WAITINGTIME, 0);
 			printf("sending RTS, buffer\n");
-			send_frame(DL_RTS, f.dest, 0, NULL);
+			send_frame(DL_RTS, f.h.dest, 0, NULL);
 		}
 		else
 		{
@@ -257,17 +253,19 @@ static EVENT_HANDLER(receive)
 {
 	FRAME f;
 	size_t len;
-	int link, checksum;
+	int link; 
+	uint32_t checksum;
 
 	//receive the frame
 	len = MAX_FRAME_SIZE;
+	printf("%d\n", MAX_FRAME_SIZE);
 	CHECK(CNET_read_physical(&link, &f, &len));
-	printf("Node %d: Read physical, len = %d\n", nodeinfo.nodenumber, len);
+	printf("Node %d: Read physical, len = %d, reported len = %d, checksum = %d,  \n", nodeinfo.nodenumber, len, f.h.len, f.h.checksum);
 	
-	checksum    = f.checksum;
-    f.checksum  = 0;
+	checksum    = f.h.checksum;
+    f.h.checksum  = 0;
     printf("Node %d: Receiving frame with checksum %d\n",nodeinfo.nodenumber, checksum);
-    int new_check = CNET_ccitt((unsigned char *)&f, len);
+    uint32_t new_check = CNET_crc32((unsigned char *)&f, len);
     printf("Calculated checksum is: %d\n", new_check);
     if(new_check != checksum) {
         printf("\t\t\t\tBAD checksum\n");
@@ -277,19 +275,19 @@ static EVENT_HANDLER(receive)
         return;           /* bad checksum, ignore frame */
     }
 	
-	switch(f.type)
+	switch(f.h.type)
 	{
 		case DL_BEACON:
-			printf("Beacon from: %d\n",f.src);
-			oracle_recv(f.msg, f.len, f.src);
+			printf("Beacon from: %d\n",f.h.src);
+			oracle_recv(f.msg, f.h.len, f.h.src);
 			break;
 		case DL_RTS:
 			printf("Node %d: Processing RTS\n", nodeinfo.nodenumber);
-			printf("Node %d: RTS for %d\n", nodeinfo.nodenumber, f.dest);
-			if(f.dest == nodeinfo.nodenumber)
+			printf("Node %d: RTS for %d\n", nodeinfo.nodenumber, f.h.dest);
+			if(f.h.dest == nodeinfo.nodenumber)
 			{
 				printf("Sending CTS\n");
-				send_frame(DL_CTS, f.src, 0, NULL);
+				send_frame(DL_CTS, f.h.src, 0, NULL);
 			}
 			else
 			{
@@ -299,29 +297,29 @@ static EVENT_HANDLER(receive)
 			break;
 		case DL_CTS:
 			printf("Node %d: Processing CTS\n", nodeinfo.nodenumber);
-			if(f.dest == nodeinfo.nodenumber) 
+			if(f.h.dest == nodeinfo.nodenumber) 
 			{
 				CNET_stop_timer(local_timer);
 				FRAME next;
 				dequeue(buf, &next);
-				printf("Node %d: Sending DATA to %d\n", nodeinfo.nodenumber, next.dest);
-				send_frame(DL_DATA, next.dest, next.len, next.msg); //send DATA
+				printf("Node %d: Sending DATA to %d\n", nodeinfo.nodenumber, next.h.dest);
+				send_frame(DL_DATA, next.h.dest, next.h.len, next.msg); //send DATA
 			}
 			local_timer = CNET_start_timer(EV_TIMER1, WAITINGTIME, 0);
 			break;
 		case DL_DATA:
-			if(f.dest == nodeinfo.nodenumber) 
+			if(f.h.dest == nodeinfo.nodenumber) 
 			{
 				CNET_stop_timer(local_timer);
-				printf("Recevied from: %d\n",f.src);
+				printf("Recevied from: %d\n",f.h.src);
 				//CHECK(CNET_write_application(&f.msg, &f.len));
-				net_recv(f.msg, f.len, f.src);
-				send_frame(DL_ACK, f.src, 0, NULL);
+				net_recv(f.msg, f.h.len, f.h.src);
+				send_frame(DL_ACK, f.h.src, 0, NULL);
 			}
 			local_timer = CNET_start_timer(EV_TIMER1, WAITINGTIME, 0);
 			break;
 		case DL_ACK:
-			if(f.dest == nodeinfo.nodenumber) 
+			if(f.h.dest == nodeinfo.nodenumber) 
 			{
 				printf("Node %d Sending ACK\n", nodeinfo.nodenumber);
 				sending_data = false;

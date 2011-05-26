@@ -2,18 +2,35 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 
 /* some constants here, such as maximum frame lengths */
-#define ORACLEINTERVAL 6000000 /* oracle broadcast interval in microseconds */
+#define ORACLEINTERVAL 3000000 /* oracle broadcast interval in microseconds */
 #define ORACLEWAIT (ORACLEINTERVAL*2) /* time a neighbour will be 'live' after a beacon */
 #define MINDIST 2
 /* This is the maximum size of the PAYLOAD of a datagram, not the datagram including the header! */
 
 #define MAX_FRAME_SIZE WLAN_MAXDATA /* TODO: What is this actually? All other max sizes are based on this. */
 
+typedef enum 
+{
+	DL_DATA, DL_BEACON, DL_RTS, DL_CTS, DL_ACK
+} FRAMETYPE;
+
+typedef struct
+{
+	FRAMETYPE	type;
+	int		dest;	// Zero if beacon, so broadcasted
+	int 		src;
+	size_t		len;
+	uint32_t	checksum;
+} FRAMEHEADER;
+
 /* These are used by the link layer. */
-#define FRAME_HEADER_SIZE (sizeof(FRAMETYPE) + (3 * sizeof(int)) + sizeof(size_t))
+#define FRAME_HEADER_SIZE sizeof(FRAMEHEADER)
 #define MAX_PACKET_SIZE (MAX_FRAME_SIZE - FRAME_HEADER_SIZE)
+
+
 
 /* These are used by the network layer */
 #define PACKET_HEADER_SIZE ((2 * sizeof(CnetAddr)) + sizeof(int))
@@ -29,11 +46,6 @@
 #define LOGDIR "./dtnlog"
 
 /* link.c */
-/* I don't know how to do a prototype of an enum, so I just moved the whole thing here */
-typedef enum 
-{
-	DL_DATA, DL_BEACON, DL_RTS, DL_CTS, DL_ACK
-} FRAMETYPE;
 
 int get_nbytes_writeable();
 void link_send_data( char * msg, int len, CnetAddr recv);

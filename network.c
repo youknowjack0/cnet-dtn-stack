@@ -185,8 +185,13 @@ static void try_to_send(PACKET* pack, STACK* s)
 		 * TODO: check the DLL buffer
 		 */
 		printf("Node%d Network: Can send, to %d\n", nodeinfo.nodenumber, add_p);
-		link_send_data((char*) pack, mem_used, add_p);
-		free(pack);
+		/* todo: permanent solution */
+		if(mem_used <= MAX_PACKET_SIZE) {
+			link_send_data((char*) pack, mem_used, add_p);
+			free(pack);
+		} else {
+			printf("tried to send overlarge packet!");
+		}
 	}
 	else 
 	{
