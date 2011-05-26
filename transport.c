@@ -110,6 +110,10 @@ static DATAGRAM* dequeue(TRANSQUEUE*);
 static struct QUEUE_EL* tree_get(int key)
 {
 		struct QUEUE_EL* curr_el = buff->bottom;
+		if(curr_el == NULL)
+		{
+			return NULL;
+		}
 		while(curr_el->up != NULL)
 		{
 				if(curr_el->up->key == key)
