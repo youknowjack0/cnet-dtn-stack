@@ -128,7 +128,7 @@ void reset_send_timer()
 void send_frame(FRAMETYPE type, CnetAddr dest, size_t len, char* data) 
 {
 	printf("    Node %d: Sending frame %d bytes type %d, ignore %d %d \n", nodeinfo.nodenumber, len, type, FRAME_HEADER_SIZE, FRAME_HEADER_SIZE);
-	assert(len < MAX_PACKET_SIZE);
+	assert(len <= MAX_PACKET_SIZE);
 	FRAME f;// = malloc(FRAME_HEADER_SIZE + len);
 	f.h.type = type;
 	f.h.dest = dest;

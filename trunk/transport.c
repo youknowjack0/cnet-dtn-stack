@@ -9,38 +9,6 @@
 
 #define TRANSPORT_BUFF_SIZE 1000000
 
-/*
- **************************************************
- * The datagram structure.			  *
- * This is the header and message that gets sent  *
- * from the transport layer (this) to the network *
- * layer.					  *
- **************************************************
-* 
- * Data received from the network layer should be
- * of this type.
- *
- * Messages down from the application layer need
- * to be reduced to fragments of legal size and
- * then added to this header before they are sent
- * to the network layer.
- */
-typedef struct 
-{
-	uint32_t checksum;
-	/* the size of msg_frag */
-	uint32_t msg_size;
-	/* the original sender */
-	int source;
-	/* the serial number on the message */
-	int msg_num;
-	/* the sequence number of this fragment within the message */
-	int frag_num;
-	/* the number of fragments in this message */
-	int frag_count;
-	/* the message fragment */
-	char msg_frag[MAX_FRAGMENT_SIZE];
-} DATAGRAM;
 
 
 /*
@@ -247,7 +215,7 @@ static DATAGRAM* dequeue(TRANSQUEUE* q)
 				free(q->bottom->down);
 				q->bottom->down = NULL;
 				free_bytes += sizeof(struct QUEUE_EL);
-				free_bytes += (d->frag_count * sizeof(DATAGRAM));
+				free_bytes += (d->h.frag_count * sizeof(DATAGRAM));
 				return d;
 		}
 }
@@ -262,23 +230,23 @@ static DATAGRAM* dequeue(TRANSQUEUE* q)
  */
 static bool enqueue(TRANSQUEUE* q, DATAGRAM* dat)
 {
-		int key = make_key(dat->source, dat->msg_num);
+		int key = make_key(dat->h.source, dat->h.msg_num);
 		struct QUEUE_EL* el = tree_get(key);
 		if(el == NULL)
 		{
 				el = malloc(sizeof(struct QUEUE_EL));
-				el->frags = malloc((dat->frag_count) * sizeof(DATAGRAM));
+				el->frags = malloc((dat->h.frag_count) * sizeof(DATAGRAM));
 
-		int bytes_used = sizeof(struct QUEUE_EL) +  (dat->frag_count * sizeof(DATAGRAM));
+		int bytes_used = sizeof(struct QUEUE_EL) +  (dat->h.frag_count * sizeof(DATAGRAM));
 		while(free_bytes < bytes_used)
 		{
 			dequeue(q);
 		}
 		free_bytes -= bytes_used;
 
-		el->num_frags_needed = dat->frag_count;
+		el->num_frags_needed = dat->h.frag_count;
 		el->num_frags_gotten = 0;
-		el->key = make_key(dat->source, dat->msg_num);
+		el->key = make_key(dat->h.source, dat->h.msg_num);
 
 		el->down = q->top;
 		el->up = NULL;
@@ -286,7 +254,7 @@ static bool enqueue(TRANSQUEUE* q, DATAGRAM* dat)
 		q->top = el;
 	}
 
-	memcpy(el->frags + el->num_frags_gotten++, dat, DATAGRAM_HEADER_SIZE + dat->msg_size);
+	memcpy(el->frags + el->num_frags_gotten++, dat, DATAGRAM_HEADER_SIZE + dat->h.msg_size);
 	return (el->num_frags_gotten == el->num_frags_needed);
 }
 
@@ -329,11 +297,11 @@ static int comp(const void* one, const void* two)
 {
 	DATAGRAM* first = (DATAGRAM*) one;
 	DATAGRAM* second = (DATAGRAM*) two;
-	if(first->frag_num == second->frag_num)
+	if(first->h.frag_num == second->h.frag_num)
 	{
 		return 0;
 	}
-	else if(first->frag_num < second->frag_num)
+	else if(first->h.frag_num < second->h.frag_num)
 	{
 		return -1;
 	}
@@ -374,18 +342,23 @@ void transport_recv(char* msg, int len, CnetAddr sender)
 	/* 
 	 * Check integrity 
 	 */
-	int sum = CNET_crc32((unsigned char *)(d) + offsetof(DATAGRAM, msg_size), len - sizeof(d->checksum));
-	if(sum != d->checksum) return; 
+	int oldsum = d->h.checksum;
+	d->h.checksum = 0;
+	int sum = CNET_crc32((unsigned char *)(d), len);
+	if(sum != oldsum) {
+		printf("network layer checksum failed");
+		return;
+	}
 
 	
 	printf("Node %d: transport_recv, got past checksum\n", nodeinfo.nodenumber);
 	/* 
 	 * Pass up 
 	 */
-	printf("Node %d: transport_recv, frag_count = %d\n", nodeinfo.nodenumber, d->frag_count);
-	if(d->frag_count == 1)
+	printf("Node %d: transport_recv, frag_count = %d\n", nodeinfo.nodenumber, d->h.frag_count);
+	if(d->h.frag_count == 1)
 	{
-		message_receive(d->msg_frag, d->msg_size, sender);
+		message_receive(d->msg_frag, d->h.msg_size, sender);
 	}
 	else
 	{
@@ -396,21 +369,21 @@ void transport_recv(char* msg, int len, CnetAddr sender)
 			/*
 			 * Reassemble message
 			 */
-			DATAGRAM* frags = queue_delete(buff, d->source, d->msg_num);
+			DATAGRAM* frags = queue_delete(buff, d->h.source, d->h.msg_num);
 			printf("Node %d: transport_recv, deleted from queue\n", nodeinfo.nodenumber);
-			qsort(frags, d->frag_count, sizeof(DATAGRAM), comp);
+			qsort(frags, d->h.frag_count, sizeof(DATAGRAM), comp);
 			printf("Node %d: transport_recv, qsorted\n", nodeinfo.nodenumber);
-			int num_frags = d->frag_count;
+			int num_frags = d->h.frag_count;
 			char* built_msg = malloc(num_frags * MAX_FRAGMENT_SIZE * sizeof(char));
 			int built_msg_size = 0;
 			for(int i = 1; i <= num_frags; i++)
 			{
 				//if(i == num_frags)
 				//{
-					printf("Node %d Transport: message %d, frag %d, len %d\n", nodeinfo.nodenumber, frags[i-1].msg_num, 
-						frags[i-1].frag_num, frags[i-1].msg_size);
-					memcpy(built_msg + ((i - 1) * MAX_FRAGMENT_SIZE), frags[i - 1].msg_frag, frags[i - 1].msg_size);
-					built_msg_size += frags[i - 1].msg_size;
+					printf("Node %d Transport: message %d, frag %d, len %d\n", nodeinfo.nodenumber, frags[i-1].h.msg_num, 
+						frags[i-1].h.frag_num, frags[i-1].h.msg_size);
+					memcpy(built_msg + ((i - 1) * MAX_FRAGMENT_SIZE), frags[i - 1].msg_frag, frags[i - 1].h.msg_size);
+					built_msg_size += frags[i - 1].h.msg_size;
 					/*
 				}
 				else
@@ -420,7 +393,7 @@ void transport_recv(char* msg, int len, CnetAddr sender)
 				}
 				*/
 			}
-			printf("Node %d Transport: reassembled message %d of len %d\n", nodeinfo.nodenumber, d->msg_num, built_msg_size);
+			printf("Node %d Transport: reassembled message %d of len %d\n", nodeinfo.nodenumber, d->h.msg_num, built_msg_size);
 			message_receive(built_msg, built_msg_size, sender);
 			free(built_msg);
 			free(frags);
@@ -471,13 +444,13 @@ void transport_datagram(char* msg, int len, CnetAddr destination)
 			 */
 			DATAGRAM* d = malloc(DATAGRAM_HEADER_SIZE + remainder); 
 
-			d->msg_size = remainder;
-			d->source = src;
-			d->msg_num = msg_num;
-			d->frag_num = frag_num++;
-			d->frag_count = num_frags_needed;
+			d->h.msg_size = remainder;
+			d->h.source = src;
+			d->h.msg_num = msg_num;
+			d->h.frag_num = frag_num++;
+			d->h.frag_count = num_frags_needed;
 
-			printf("Node %d Transport: message %d, frag %d, len %d\n", nodeinfo.nodenumber, msg_num, d->frag_num, remainder);
+			printf("Node %d Transport: message %d, frag %d, len %d\n", nodeinfo.nodenumber, msg_num, d->h.frag_num, remainder);
 
 			/*
 			 * copy over a part of a the message. parts are not null-terminated 
@@ -487,13 +460,14 @@ void transport_datagram(char* msg, int len, CnetAddr destination)
 			/*
 			 * Set the checksum
 			 */
-			d->checksum = CNET_crc32(((unsigned char *) d) + offsetof(DATAGRAM, msg_size), 
-					sizeof(DATAGRAM) - sizeof(d->checksum) - MAX_FRAGMENT_SIZE + remainder); 
+			d->h.checksum = 0;
+			d->h.checksum = CNET_crc32(((unsigned char *) d), DATAGRAM_HEADER_SIZE + d->h.msg_size); 
 
 			/*
 			 * Send it and free the memory
 			 */
 			printf("Node %d Transport: about to net_send\n", nodeinfo.nodenumber);
+			assert(DATAGRAM_HEADER_SIZE + remainder < MAX_PACKET_SIZE);
 			net_send(((char*) d), DATAGRAM_HEADER_SIZE + remainder, destination);
 			free(d);
 		}
@@ -508,11 +482,11 @@ void transport_datagram(char* msg, int len, CnetAddr destination)
 			 
 			DATAGRAM* d = malloc(sizeof(DATAGRAM));
 
-			d->msg_size = MAX_FRAGMENT_SIZE;
-			d->source = src;
-			d->msg_num = msg_num;
-			d->frag_num = frag_num++;
-			d->frag_count = num_frags_needed;
+			d->h.msg_size = MAX_FRAGMENT_SIZE;
+			d->h.source = src;
+			d->h.msg_num = msg_num;
+			d->h.frag_num = frag_num++;
+			d->h.frag_count = num_frags_needed;
 
 			
 			 // copy over a part of a the message. parts are not null-terminated 
@@ -520,12 +494,12 @@ void transport_datagram(char* msg, int len, CnetAddr destination)
 			memcpy(d->msg_frag, msg + (i * MAX_FRAGMENT_SIZE), MAX_FRAGMENT_SIZE);
 
 						 // Set the checksum 
-			d->checksum = CNET_crc32(((unsigned char *) d) + offsetof(DATAGRAM, msg_size), 
-					sizeof(DATAGRAM) - sizeof(d->checksum)); 
-
+			d->h.checksum = 0;
+			d->h.checksum = CNET_crc32(((unsigned char *) d), DATAGRAM_HEADER_SIZE + d->h.msg_size); 
 			
 			 //Send it and free the memory
 			printf("Node %d Transport: about to net_send\n", nodeinfo.nodenumber);
+			assert(sizeof(DATAGRAM) <= MAX_DATAGRAM_SIZE);
 			net_send(((char*)d), sizeof(DATAGRAM), destination);
 			free(d);
 		}

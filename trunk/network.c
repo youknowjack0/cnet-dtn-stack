@@ -17,20 +17,6 @@
 #define NETWORK_BUFF_SIZE 1000000
 
 
-/* 
- * network packet structure 
- */
-typedef struct 
-{
-	CnetAddr source;
-	CnetAddr dest;
-	/*
-	 * length of msg 
-	 */
-	int len;
-	char msg[MAX_DATAGRAM_SIZE];
-
-} PACKET;
 
 struct STACK_EL 
 {
@@ -97,7 +83,7 @@ static PACKET* dequeue(STACK* s)
 		s->bottom = s->bottom->up;
 		free(s->bottom->down);
 		s->bottom->down = NULL;
-		free_bytes += (sizeof(struct STACK_EL) + PACKET_HEADER_SIZE + tmp->len);
+		free_bytes += (sizeof(struct STACK_EL) + PACKET_HEADER_SIZE + tmp->h.len);
 		return tmp;
 	}
 }
@@ -107,7 +93,7 @@ static PACKET* dequeue(STACK* s)
  */
 static void push(STACK* s, PACKET* pack) 
 {
-	int mem_used = (sizeof(struct STACK_EL) + PACKET_HEADER_SIZE + pack->len);
+	int mem_used = (sizeof(struct STACK_EL) + PACKET_HEADER_SIZE + pack->h.len);
 
 	while(get_public_nbytes_free() < mem_used) 
 	{
@@ -139,7 +125,7 @@ static PACKET* pop(STACK* s)
 		s->top = s->top->down;
 		free(s->top->up);
 		s->top->up = NULL;
-		free_bytes += (sizeof(struct STACK_EL) + PACKET_HEADER_SIZE + tmp->len);
+		free_bytes += (sizeof(struct STACK_EL) + PACKET_HEADER_SIZE + tmp->h.len);
 		return tmp;
 	}
 }
@@ -172,9 +158,9 @@ static PACKET* pop(STACK* s)
 static void try_to_send(PACKET* pack, STACK* s) 
 {
 	printf("Node%d Network: Trying to send\n", nodeinfo.nodenumber);
-	int mem_used = PACKET_HEADER_SIZE + pack->len;
+	int mem_used = PACKET_HEADER_SIZE + pack->h.len;
 	CnetAddr add_p;
-	bool can_send = get_nth_best_node(&add_p, 0, pack->dest, mem_used);
+	bool can_send = get_nth_best_node(&add_p, 0, pack->h.dest, mem_used);
 
 	if (can_send) 
 	{
@@ -256,9 +242,9 @@ bool net_send(char* msg, int len, CnetAddr dst)
 	printf("Node %d Network: got msg with dest = %d\n", nodeinfo.nodenumber, dst);
 	int mem_used = PACKET_HEADER_SIZE + len;
 	PACKET* pack = malloc(mem_used);
-	pack->source = nodeinfo.nodenumber;
-	pack->dest = dst;
-	pack->len = len;
+	pack->h.source = nodeinfo.nodenumber;
+	pack->h.dest = dst;
+	pack->h.len = len;
 	memcpy(pack->msg, msg, len);
 	printf("Node %d Network: copied message\n",nodeinfo.nodenumber);
 
@@ -304,13 +290,13 @@ void net_recv(char* msg, int len, CnetAddr src)
 	/*
 	 * if the destination is this node
 	 */
-	if(nodeinfo.nodenumber == pack->dest) 
+	if(nodeinfo.nodenumber == pack->h.dest) 
 	{
 		/*
 		 * pass it right on up to the transport layer.
 		 * free the memory (free(pack)).
 		 */
-		transport_recv(pack->msg, pack->len, pack->source);
+		transport_recv(pack->msg, pack->h.len, pack->h.source);
 		free(pack);
 	}
 	else 

@@ -26,19 +26,76 @@ typedef struct
 	uint32_t	checksum;
 } FRAMEHEADER;
 
+
 /* These are used by the link layer. */
 #define FRAME_HEADER_SIZE sizeof(FRAMEHEADER)
 #define MAX_PACKET_SIZE (MAX_FRAME_SIZE - FRAME_HEADER_SIZE)
 
+/* 
+ * network packet structure 
+ */
+typedef struct 
+{
+	CnetAddr source;
+	CnetAddr dest;
+	/*
+	 * length of msg 
+	 */
+	int len;
 
+} PACKETHEADER;
 
 /* These are used by the network layer */
-#define PACKET_HEADER_SIZE ((2 * sizeof(CnetAddr)) + sizeof(int))
+#define PACKET_HEADER_SIZE (sizeof(PACKETHEADER))
 #define MAX_DATAGRAM_SIZE (MAX_PACKET_SIZE - PACKET_HEADER_SIZE) 
 
+typedef struct {
+	PACKETHEADER h;
+	char msg[MAX_DATAGRAM_SIZE];
+} PACKET;
+
+/*
+ **************************************************
+ * The datagram structure.			  *
+ * This is the header and message that gets sent  *
+ * from the transport layer (this) to the network *
+ * layer.					  *
+ **************************************************
+* 
+ * Data received from the network layer should be
+ * of this type.
+ *
+ * Messages down from the application layer need
+ * to be reduced to fragments of legal size and
+ * then added to this header before they are sent
+ * to the network layer.
+ */
+typedef struct
+{
+	uint32_t checksum;
+	/* the size of msg_frag */
+	uint32_t msg_size;
+	/* the original sender */
+	int source;
+	/* the serial number on the message */
+	int msg_num;
+	/* the sequence number of this fragment within the message */
+	int frag_num;
+	/* the number of fragments in this message */
+	int frag_count;
+} DATAGRAMHEADER;
+
 /* These are used by the transport layer */
-#define DATAGRAM_HEADER_SIZE ((2 * sizeof(uint32_t)) + (4 * sizeof(int)))
-#define MAX_FRAGMENT_SIZE (MAX_DATAGRAM_SIZE - DATAGRAM_HEADER_SIZE)
+#define DATAGRAM_HEADER_SIZE (sizeof(DATAGRAMHEADER))
+#define MAX_FRAGMENT_SIZE ((MAX_DATAGRAM_SIZE - DATAGRAM_HEADER_SIZE))
+
+typedef struct 
+{
+	DATAGRAMHEADER h;
+	/* the message fragment */
+	char msg_frag[MAX_FRAGMENT_SIZE];
+} DATAGRAM;
+
 
 /* TODO: this needs to go! */
 #define NUM_NODES 10 
