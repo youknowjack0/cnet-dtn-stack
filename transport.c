@@ -76,77 +76,12 @@ static int free_bytes;
  */
 static TRANSQUEUE* buff;
 
-/*
- * Tracks whether to use right_min or left_max for
- * deletion from red-black tree
- */
-static bool max_or_min;
 
 /*
  ************************
  * END GLOBAL VARIABLES *
  ************************
  */
-
-
-/*
- ***************************************
- * DECLARATIONS FOR DEPENDENCY REASONS *
- ***************************************
- */
-
-static DATAGRAM* dequeue(TRANSQUEUE*);
-
-/*
- ****************************
- * RED-BLACK TREE FUNCTIONS *
- ****************************
- */
-
-/*
- * Looks up the adress of the entry for the message in the
- * queue
- */
-static struct QUEUE_EL* tree_get(int key)
-{
-		struct QUEUE_EL* curr_el = buff->bottom;
-		if(curr_el == NULL)
-		{
-			return NULL;
-		}
-		while(curr_el->up != NULL)
-		{
-				if(curr_el->up->key == key)
-						return curr_el->up;
-				curr_el = curr_el->up;
-		}
-		return NULL;
-}	
-/*
- * Deletes the entry for the message in the tree and returns
- * the address of the entry for the message in the queue.
- */
-/* Not used
-static struct QUEUE_EL* tree_delete(int key)
-{
-		struct QUEUE_EL* ret =  tree_get(key);
-		if(ret->down != NULL)
-		{
-				ret->down->up = ret->up;
-		}
-		if(ret->up != NULL)
-		{
-				ret->up->down = ret->down;
-		}
-		return ret;
-}
-*/
-/*
- ********************************
- * END RED-BLACK TREE FUNCTIONS *
- ********************************
- */
-
 
 
 /* 
@@ -165,6 +100,27 @@ static long long int make_key(int src, int message_num)
 	long long int ret = atoll(tmp);
 	return ret;
 }
+
+/*
+ * Looks up the adress of the entry for the message in the
+ * queue
+ */
+static struct QUEUE_EL* queue_get(long long int key)
+{
+		struct QUEUE_EL* curr_el = buff->bottom;
+		if(curr_el == NULL)
+		{
+			return NULL;
+		}
+		while(curr_el->up != NULL)
+		{
+				if(curr_el->up->key == key)
+						return curr_el->up;
+				curr_el = curr_el->up;
+		}
+		return NULL;
+}	
+
 
 /*
  * returns a pointer to a new, empty TRANSQUEUE
@@ -206,11 +162,12 @@ static DATAGRAM* dequeue(TRANSQUEUE* q)
 		}
 		else
 		{
-				DATAGRAM* d = q->bottom->frags;
-				q->bottom = q->bottom->up;
+				struct QUEUE_EL* del = q->bottom;
+				DATAGRAM* d = del->frags;
+				q->bottom = del->up;
+				free(del);
 				if(q->bottom != NULL)
 				{
-					free(q->bottom->down);
 					q->bottom->down = NULL;
 				}
 				else
@@ -233,8 +190,8 @@ static DATAGRAM* dequeue(TRANSQUEUE* q)
  */
 static bool enqueue(TRANSQUEUE* q, DATAGRAM* dat)
 {
-	int key = make_key(dat->h.source, dat->h.msg_num);
-	struct QUEUE_EL* el = tree_get(key);
+	long long int key = make_key(dat->h.source, dat->h.msg_num);
+	struct QUEUE_EL* el = queue_get(key);
 	if(el == NULL)
 	{
 		el = malloc(sizeof(struct QUEUE_EL));
@@ -277,7 +234,7 @@ static bool enqueue(TRANSQUEUE* q, DATAGRAM* dat)
  */
 static DATAGRAM* queue_delete(TRANSQUEUE* q, int src, int message_num)
 {
-	struct QUEUE_EL* temp = tree_get(make_key(src, message_num));
+	struct QUEUE_EL* temp = queue_get(make_key(src, message_num));
 	if (temp == NULL)
 		return NULL;
 	else
@@ -536,7 +493,6 @@ void transport_init()
 	msg_num_counter = 0;	
 	free_bytes = TRANSPORT_BUFF_SIZE;
 	buff = new_queue();
-	max_or_min = false;
 }
 
 /* 
