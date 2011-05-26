@@ -25,6 +25,11 @@ typedef struct
 {
 	CnetAddr addr;
 	CnetPosition loc;
+	uint32_t timestamp; /* time when this location was seen, given in 
+							the local time of the sender, in SECONDS */
+						/* It's not necessary to try synchronise this
+						 * because we'll only be comparing it to timestamps
+						 * from the very same sender */
 } NODELOCATION;
 
 #define ORACLE_HEADER_SIZE (sizeof(NODELOCATION) + sizeof(uint32_t)*3)
@@ -90,7 +95,6 @@ static void savePosition(NODELOCATION n)
  */
 static uint32_t checksum_oracle_packet(OraclePacket * p) 
 {
-	/* TODO: might need to deal with struct field offset? */
 	p->checksum = 0;
 	return CNET_crc32((unsigned char*)p, sizeof(OraclePacket) - sizeof(p->locations) + sizeof(NODELOCATION)*p->locationsSize);
 	//return 0;
@@ -157,11 +161,10 @@ EVENT_HANDLER(sendOracleBeacon)
 	p.senderLocation.addr = nodeinfo.nodenumber;
 	CnetPosition loc;
 	CNET_get_position(&loc, NULL);
-	p.senderLocation.loc = loc;	
+	p.senderLocation.loc = loc;
+	p.senderLocation.timestamp = nodeinfo.time_in_usec/1000;
 	char * pp = (char *)(&(p));	
 	p.checksum = checksum_oracle_packet(&p);
-	/* todo: macro for the packet header */
-	/*printf("Node %d: preparing to send beacon to link\n", nodeinfo.nodenumber);*/
 	int len = sizeof(p) - sizeof(p.locations) + sizeof(NODELOCATION)*dbsize;
 	assert(len < MAX_PACKET_SIZE);
 	link_send_info(pp, len, ALLNODES);
@@ -289,7 +292,7 @@ void oracle_recv(char * msg, int len, CnetAddr rcv)
 		printf("Node %d oracle: Got an oracle packet from %d; contents:\n", nodeinfo.nodenumber, p->senderLocation.addr);
 		printf("\tNode %d is at %d,%d\n", p->senderLocation.addr, p->senderLocation.loc.x, p->senderLocation.loc.y);
 		for(int i=0;i<p->locationsSize;i++) {
-			printf("\tNode %d spotted @ %d,%d\n", p->locations[i].addr, p->locations[i].loc.x, p->locations[i].loc.y);
+			printf("\tNode %d spotted @ %d,%d ; %d oclock\n", p->locations[i].addr, p->locations[i].loc.x, p->locations[i].loc.y, p->locations[i].timestamp);
 		}
 		processBeacon(p);
 	}
