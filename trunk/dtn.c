@@ -96,8 +96,8 @@ EVENT_HANDLER(reboot_node)
 	oracle_init();
 
 //  START WALKING
-//	init_walking();
-//	start_walking();
+	init_walking();
+	start_walking();
 
 //  PREPARE TO TALK VIA OUR WIRELESS CONNECTION
 	CNET_set_wlan_model( my_WLAN_model );

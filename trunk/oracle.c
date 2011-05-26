@@ -85,8 +85,12 @@ static void savePosition(NODELOCATION n)
 	} 
 	else 
 	{
-		//update
-		nbp->nl.loc = n.loc;
+		//update location for this node if it's a newer reading
+		if(nbp->nl.timestamp < n.timestamp) {
+			nbp->nl.loc = n.loc;
+			nbp->nl.timestamp = n.timestamp;
+			printf("Node %d Oracle: Updated the location of node %d to %d,%d from time %d\n", nodeinfo.nodenumber, n.addr, n.loc.x, n.loc.y, n.timestamp);
+		}
 	}
 }
 
@@ -162,7 +166,8 @@ EVENT_HANDLER(sendOracleBeacon)
 	CnetPosition loc;
 	CNET_get_position(&loc, NULL);
 	p.senderLocation.loc = loc;
-	p.senderLocation.timestamp = nodeinfo.time_in_usec/1000;
+	p.senderLocation.timestamp = nodeinfo.time_in_usec/1000000;
+	printf("My time is %ds\n", nodeinfo.time_in_usec/1000000);
 	char * pp = (char *)(&(p));	
 	p.checksum = checksum_oracle_packet(&p);
 	int len = sizeof(p) - sizeof(p.locations) + sizeof(NODELOCATION)*dbsize;
