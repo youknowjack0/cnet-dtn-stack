@@ -213,6 +213,10 @@ static DATAGRAM* dequeue(TRANSQUEUE* q)
 					free(q->bottom->down);
 					q->bottom->down = NULL;
 				}
+				else
+				{
+					q->top = NULL;
+				}
 				free_bytes += sizeof(struct QUEUE_EL);
 				free_bytes += (d->h.frag_count * sizeof(DATAGRAM));
 				return d;
@@ -245,7 +249,7 @@ static bool enqueue(TRANSQUEUE* q, DATAGRAM* dat)
 
 		el->num_frags_needed = dat->h.frag_count;
 		el->num_frags_gotten = 0;
-		el->key = make_key(dat->h.source, dat->h.msg_num);
+		el->key = key; 
 
 		el->down = q->top;
 		el->up = NULL;

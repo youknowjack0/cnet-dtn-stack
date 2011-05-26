@@ -49,14 +49,6 @@ int get_private_nbytes_free()
 static STACK* new_stack() 
 {
 	STACK* s = malloc(sizeof(STACK));
-/*
-	struct STACK_EL* el = malloc(sizeof(struct STACK_EL));
-	el->up = NULL;
-	el->down = NULL;
-	el->p = NULL;
-	s->top = el;
-	s->bottom = el;
-*/
 	s->top = NULL;
 	s->bottom = NULL;
 	return s;
@@ -148,24 +140,6 @@ static PACKET* pop(STACK* s)
 		return ret;
 	}
 }
-
-/*
- * returns but does not remove the top of a stack
- * NOT USED
- *
- static packet* peek(STACK* s) 
- {
- if (is_empty(s)) 
- {
-   return NULL;
-   }
-   else 
-   {
-   return s->top->p;
-   }
-   }
- *
- */
 
 /*
  * Use the oracle to find the best link on which
