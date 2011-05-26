@@ -90,14 +90,14 @@ EVENT_HANDLER(reboot_node)
 	CHECK(CNET_set_handler(EV_TIMER6, start_sending, 0));
 
 //	START LAYERS
-	transport_init();
-	oracle_init();
-	net_init();
     link_init();
-	
+	transport_init();
+	net_init();
+	oracle_init();
+
 //  START WALKING
-	init_walking();
-	start_walking();
+//	init_walking();
+//	start_walking();
 
 //  PREPARE TO TALK VIA OUR WIRELESS CONNECTION
 	CNET_set_wlan_model( my_WLAN_model );

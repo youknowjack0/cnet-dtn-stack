@@ -27,7 +27,7 @@ typedef struct
 	CnetPosition loc;
 } NODELOCATION;
 
-#define ORACLE_HEADER_SIZE (sizeof(NODELOCATION) + sizeof(uint32_t)*2 + sizeof(uint16_t))
+#define ORACLE_HEADER_SIZE (sizeof(NODELOCATION) + sizeof(uint32_t)*3)
 #define MAX_ORACLE_PAYLOAD (MAX_PACKET_SIZE - ORACLE_HEADER_SIZE)
 
 /* the packet structure for oracle information transmission */
@@ -36,7 +36,7 @@ typedef struct
 	uint32_t checksum; /*crc32 checksum of the oraclepacket including 'locations' payload */
 	NODELOCATION senderLocation;
 	uint32_t freeBufferSpace; /* how many bytes of space available in transmitting nodes' public buffer */
-	uint16_t locationsSize; /* how many elements in locations */
+	uint32_t locationsSize; /* how many elements in locations */
 	NODELOCATION locations[MAX_ORACLE_PAYLOAD]; /* array of (last known) locations of known hosts */	
 } OraclePacket;
 
@@ -91,7 +91,9 @@ static void savePosition(NODELOCATION n)
 static uint32_t checksum_oracle_packet(OraclePacket * p) 
 {
 	/* TODO: might need to deal with struct field offset? */
-	return CNET_crc32((unsigned char*)p + sizeof(p->checksum), sizeof(OraclePacket) - sizeof(p->locations) + sizeof(NODELOCATION)*p->locationsSize - sizeof(p->checksum));
+	p->checksum = 0;
+	printf("crc32oc, %d %d %d %d\n", sizeof(OraclePacket), sizeof(p->locations), sizeof(NODELOCATION), p->locationsSize);
+	return CNET_crc32((unsigned char*)p, sizeof(OraclePacket) - sizeof(p->locations) + sizeof(NODELOCATION)*p->locationsSize);
 	//return 0;
 }
 
@@ -161,7 +163,9 @@ EVENT_HANDLER(sendOracleBeacon)
 	p.checksum = checksum_oracle_packet(&p);
 	/* todo: macro for the packet header */
 	/*printf("Node %d: preparing to send beacon to link\n", nodeinfo.nodenumber);*/
-	link_send_info(pp, sizeof(p) - sizeof(p.locations) + sizeof(NODELOCATION)*dbsize, ALLNODES);
+	int len = sizeof(p) - sizeof(p.locations) + sizeof(NODELOCATION)*dbsize;
+	assert(len < MAX_PACKET_SIZE);
+	link_send_info(pp, len, ALLNODES);
 	printf("Node %d: sent beacon to link\n", nodeinfo.nodenumber);
 	/* send again later */
 	CNET_start_timer(EV_TIMER7, (CnetTime)ORACLEINTERVAL, 0);
@@ -276,7 +280,12 @@ void oracle_recv(char * msg, int len, CnetAddr rcv)
 {
 	/* parse info from other nodes to estimate topology */
 	OraclePacket * p = (OraclePacket *) msg;
-	if(checksum_oracle_packet(p)==p->checksum) 
+	uint32_t oldsum = p->checksum;
+	if(p->locationsSize*sizeof(NODELOCATION) + ORACLE_HEADER_SIZE != len) {
+		printf("got a corrupt oracle packet\n");
+		return; /* corrupt length */
+	}
+	if(checksum_oracle_packet(p)==oldsum) 
 	{
 		printf("Node %d oracle: Got an oracle packet from %d; contents:\n", nodeinfo.nodenumber, p->senderLocation.addr);
 		printf("\tNode %d is at %d,%d\n", p->senderLocation.addr, p->senderLocation.loc.x, p->senderLocation.loc.y);
@@ -298,5 +307,6 @@ void oracle_init()
 	CNET_srand(nodeinfo.time_of_day.sec + nodeinfo.nodenumber);
 	/* schedule periodic transmission of topology information, or whatever */		
 	CNET_set_handler(EV_TIMER7, sendOracleBeacon, 0);
-	CNET_start_timer(EV_TIMER7, (CnetTime)((CNET_rand() % ORACLEINTERVAL)), 0);
+	//CNET_start_timer(EV_TIMER7, (CnetTime)((CNET_rand() % ORACLEINTERVAL)), 0);
+	CNET_start_timer(EV_TIMER7, (CnetTime)(1000), 0);
 }
