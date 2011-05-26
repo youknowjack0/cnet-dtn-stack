@@ -92,7 +92,6 @@ static uint32_t checksum_oracle_packet(OraclePacket * p)
 {
 	/* TODO: might need to deal with struct field offset? */
 	p->checksum = 0;
-	printf("crc32oc, %d %d %d %d\n", sizeof(OraclePacket), sizeof(p->locations), sizeof(NODELOCATION), p->locationsSize);
 	return CNET_crc32((unsigned char*)p, sizeof(OraclePacket) - sizeof(p->locations) + sizeof(NODELOCATION)*p->locationsSize);
 	//return 0;
 }

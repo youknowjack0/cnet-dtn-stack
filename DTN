@@ -1,7 +1,7 @@
 compile			= "-g dtn.c mapping.c link.c network.c oracle.c transport.c walking.c"
 
 minmessagesize	= 500 bytes
-maxmessagesize	= 6000 bytes
+maxmessagesize	= 1000 bytes
 messagerate = 1000000 usec
 
 rebootargs	= "uwa1.map"
@@ -12,25 +12,30 @@ mapheight	= 110
 mapgrid		= 20
 mapscale	= 0.125
 
-probframecorrupt =  999
+probframecorrupt = 4 
 mobile iPod00 { 
 x=10, y=10
 wlan { }
 }
 mobile iPod01 { 
-x=15,y=15
+x=25,y=25
 wlan { } 
 
 }
 
-#mobile iPod02 { wlan { } }
-#mobile iPod03 { wlan { } }
-#mobile iPod04 { wlan { } }
+mobile iPod02 { x=40,y=40
+wlan { } }
 
 
-#mobile iPod06 { wlan { } }
-#mobile iPod07 { wlan { } }
-#mobile iPod08 { wlan { } }
-#mobile iPod09 { wlan { } }
-#mobile iPod10 { wlan { } }
+mobile iPod03 { x=65,y=40
+wlan { } }
+
+
+mobile iPod04 { x=90,y=40
+wlan { } }
+mobile iPod06 { wlan { } }
+mobile iPod07 { wlan { } }
+mobile iPod08 { wlan { } }
+mobile iPod05 { wlan { } }
+mobile iPod09 { wlan { } }
 

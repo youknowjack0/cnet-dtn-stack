@@ -97,9 +97,6 @@ typedef struct
 } DATAGRAM;
 
 
-/* TODO: this needs to go! */
-#define NUM_NODES 10 
-
 #define LOGDIR "./dtnlog"
 
 /* link.c */
