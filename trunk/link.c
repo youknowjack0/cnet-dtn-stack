@@ -60,7 +60,6 @@ static int numTimeouts = 0;
 /*queue definitions*/
 int enqueue(struct queue* q, FRAME f)
 {
-	/* TODO: whut? there is no way n can be null here */
 	struct node* n = malloc(sizeof(struct node));
 	n->f = f;
 	if (q->head == NULL)
