@@ -104,7 +104,7 @@ EVENT_HANDLER(reboot_node)
 	CNET_start_timer(EV_TALKING, TALK_FREQUENCY, 0);
 	//if(nodeinfo.nodenumber == 0)
 	CHECK(CNET_enable_application(ALLNODES));
-		CNET_start_timer(EV_TIMER6, 10*ORACLEINTERVAL, 0);
+	CNET_start_timer(EV_TIMER6, 10*ORACLEINTERVAL, 0);
 	
 	
 	

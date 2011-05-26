@@ -9,7 +9,7 @@
 #define TIMESLOT 			CNET_rand()%freq + 1
 
 #define WAITINGTIME 500000//(MAX_FRAME_SIZE*100000)/(linkinfo[1].bandwidth/8) //10000000
-#define	DEFAULT_FREQ 5000000 //(3*FRAME_HEADER_SIZE + MAX_DATAGRAM_SIZE)/linkinfo[1].bandwidth + linkinfo[1].propagationdelay
+#define	DEFAULT_FREQ 6000000 //(3*FRAME_HEADER_SIZE + MAX_DATAGRAM_SIZE)/linkinfo[1].bandwidth + linkinfo[1].propagationdelay
 
 /* Type definitions*/
 
