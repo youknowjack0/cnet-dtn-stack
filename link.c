@@ -6,10 +6,12 @@
  */
 #include "dtn.h"
 
-#define TIMESLOT 			CNET_rand()%freq + 1
+#define IDLE_TIMESLOT 			CNET_rand()%idle_freq + 1
+#define ACT_TIMESLOT			CNET_rand()%active_freq + 1
 
-#define WAITINGTIME 500000//(MAX_FRAME_SIZE*100000)/(linkinfo[1].bandwidth/8) //10000000
-#define	DEFAULT_FREQ 6000000 //(3*FRAME_HEADER_SIZE + MAX_DATAGRAM_SIZE)/linkinfo[1].bandwidth + linkinfo[1].propagationdelay
+#define WAITINGTIME 50//(MAX_FRAME_SIZE*100000)/(linkinfo[1].bandwidth/8) //10000000
+#define IDLE_FREQ 1000000 //(3*FRAME_HEADER_SIZE + MAX_DATAGRAM_SIZE)/linkinfo[1].bandwidth + linkinfo[1].propagationdelay
+#define ACTIVE_FREQ 100
 
 /* Type definitions*/
 
@@ -43,7 +45,8 @@ struct queue
 #define FRAME_SIZE(f)      (FRAME_HEADER_SIZE2 + f.len)
 
 /* Global var declarations */
-static	int64_t	freq	= DEFAULT_FREQ;
+static	int64_t	idle_freq	= IDLE_FREQ;
+static 	int64_t active_freq = ACTIVE_FREQ;
 
 static CnetTimerID local_timer;
 static CnetTimerID sendTimer;
@@ -114,6 +117,18 @@ int get_nbytes_writeable()
 }
 */
 
+void reset_send_timer() 
+{
+	if(buf->head != NULL) {
+		printf("Setting ACTIVE TIME\n");
+		sendTimer = CNET_start_timer(EV_TIMER2, ACT_TIMESLOT, 0);
+	}
+	else {
+		printf("Setting IDLE TIME\n");
+		sendTimer = CNET_start_timer(EV_TIMER2, IDLE_TIMESLOT, 0);
+	}
+}
+
 void send_frame(FRAMETYPE type, CnetAddr dest, size_t len, char* data) 
 {
 	printf("    Node %d: Sending frame\n", nodeinfo.nodenumber);
@@ -138,7 +153,7 @@ void send_frame(FRAMETYPE type, CnetAddr dest, size_t len, char* data)
 	f.checksum  = CNET_ccitt((unsigned char *)&f, (int)framelen);
 	printf("Node %d: Sending frame with checksum %d, len = %d, dest = %d\n", nodeinfo.nodenumber, f.checksum, framelen, f.dest);
 	//send frame over cnet
-	CHECK(CNET_write_physical(1, &f, &framelen));
+	CHECK(CNET_write_physical_reliable(1, &f, &framelen));
 }
 
 /* send data msg of length len to receiver recv 
@@ -182,7 +197,7 @@ void link_send_info( char* msg, int len, CnetAddr recv)
 static EVENT_HANDLER(collision) 
 {
 	CHECK(CNET_stop_timer(sendTimer));
-	sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT* (CNET_rand()%((int)pow(2,backoff))), 0);
+	sendTimer = CNET_start_timer(EV_TIMER2, IDLE_TIMESLOT* (CNET_rand()%((int)pow(2,backoff))), 0);
 	backoff++;
 }
 
@@ -195,8 +210,10 @@ static EVENT_HANDLER(send)
 		{
 			printf("trying to send beacon\n");
 			send_frame(DL_BEACON, info->dest, info->len, info->msg);
+			free(info);
+			info = NULL;
 			sent_info = true;
-			//sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, 0);
+			//reset_send_timer();
 		}
 		else if(sending_data == false && buf->head != NULL)
 		{
@@ -214,7 +231,7 @@ static EVENT_HANDLER(send)
 			printf("Skipped\n");
 		}
 	}
-	sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, 0);
+	reset_send_timer();
 }
 
 static EVENT_HANDLER(timeout) 
@@ -231,7 +248,7 @@ static EVENT_HANDLER(timeout)
 		} 
 		sending_data = false;
 		CNET_stop_timer(sendTimer);
-		sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, 0);
+		reset_send_timer();
 }
 
 
@@ -256,7 +273,7 @@ static EVENT_HANDLER(receive)
         printf("\t\t\t\tBAD checksum\n");
         //sending_data = false;
         //CNET_stop_timer(local_timer);
-        //sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, 0);
+        //reset_send_timer();
         return;           /* bad checksum, ignore frame */
     }
 	
@@ -308,7 +325,7 @@ static EVENT_HANDLER(receive)
 			{
 				printf("Node %d Sending ACK\n", nodeinfo.nodenumber);
 				sending_data = false;
-				sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, 0);
+				reset_send_timer();
 			}
 			CNET_stop_timer(local_timer);
 			break;
@@ -332,7 +349,7 @@ void link_init()
 	info = NULL;
 	numFrames = 0;
 	
-	sendTimer = CNET_start_timer(EV_TIMER2, TIMESLOT, 0);
+	reset_send_timer();
 }
 
 /*
