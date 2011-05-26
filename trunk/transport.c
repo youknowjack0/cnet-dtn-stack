@@ -173,18 +173,6 @@ static TRANSQUEUE* new_queue()
 {
 	TRANSQUEUE* q = malloc(sizeof(TRANSQUEUE));
 	free_bytes -= sizeof(TRANSQUEUE);
-/*
-	struct QUEUE_EL* el = malloc(sizeof(struct QUEUE_EL));
-	free_bytes -= sizeof(struct QUEUE_EL);
-	el->num_frags_needed = 0;
-	el->num_frags_gotten = 0;
-	el->key = 0;
-	el->up = NULL;
-	el->down = NULL;
-	el->frags = NULL;
-	q->top = el;
-	q->bottom = el;
- */
 	q->top = NULL;
 	q->bottom = NULL;
 	return q;
@@ -220,8 +208,11 @@ static DATAGRAM* dequeue(TRANSQUEUE* q)
 		{
 				DATAGRAM* d = q->bottom->frags;
 				q->bottom = q->bottom->up;
-				free(q->bottom->down);
-				q->bottom->down = NULL;
+				if(q->bottom != NULL)
+				{
+					free(q->bottom->down);
+					q->bottom->down = NULL;
+				}
 				free_bytes += sizeof(struct QUEUE_EL);
 				free_bytes += (d->h.frag_count * sizeof(DATAGRAM));
 				return d;
@@ -269,7 +260,8 @@ static bool enqueue(TRANSQUEUE* q, DATAGRAM* dat)
 		q->top = el;
 	}
 
-	memcpy(el->frags + el->num_frags_gotten++, dat, DATAGRAM_HEADER_SIZE + dat->h.msg_size);
+	memcpy(&(el->frags[el->num_frags_gotten]), dat, DATAGRAM_HEADER_SIZE + dat->h.msg_size);
+	el->num_frags_gotten++;
 	return (el->num_frags_gotten == el->num_frags_needed);
 }
 
@@ -360,7 +352,7 @@ void transport_recv(char* msg, int len, CnetAddr sender)
 	d->h.checksum = 0;
 	int sum = CNET_crc32((unsigned char *)(d), len);
 	if(sum != oldsum) {
-		printf("network layer checksum failed");
+		printf("network layer checksum failed\n");
 		return;
 	}
 
@@ -398,7 +390,7 @@ void transport_recv(char* msg, int len, CnetAddr sender)
 						frags[i-1].h.frag_num, frags[i-1].h.msg_size);
 					memcpy(built_msg + ((i - 1) * MAX_FRAGMENT_SIZE), frags[i - 1].msg_frag, frags[i - 1].h.msg_size);
 					built_msg_size += frags[i - 1].h.msg_size;
-					/*
+				/*
 				}
 				else
 				{
