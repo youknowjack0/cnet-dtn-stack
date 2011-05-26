@@ -169,6 +169,7 @@ static TRANSQUEUE* new_queue()
 {
 	TRANSQUEUE* q = malloc(sizeof(TRANSQUEUE));
 	free_bytes -= sizeof(TRANSQUEUE);
+/*
 	struct QUEUE_EL* el = malloc(sizeof(struct QUEUE_EL));
 	free_bytes -= sizeof(struct QUEUE_EL);
 	el->num_frags_needed = 0;
@@ -179,6 +180,9 @@ static TRANSQUEUE* new_queue()
 	el->frags = NULL;
 	q->top = el;
 	q->bottom = el;
+ */
+	q->top = NULL;
+	q->bottom = NULL;
 	return q;
 }
 
@@ -187,7 +191,7 @@ static TRANSQUEUE* new_queue()
  */
 static bool is_empty(TRANSQUEUE* q)
 {
-		return ((q->top->down == NULL) || (q->bottom->up == NULL));
+		return ((q->top == NULL) || (q->bottom == NULL));
 }
 
 /*
@@ -230,19 +234,19 @@ static DATAGRAM* dequeue(TRANSQUEUE* q)
  */
 static bool enqueue(TRANSQUEUE* q, DATAGRAM* dat)
 {
-		int key = make_key(dat->h.source, dat->h.msg_num);
-		struct QUEUE_EL* el = tree_get(key);
-		if(el == NULL)
-		{
-				el = malloc(sizeof(struct QUEUE_EL));
-				el->frags = malloc((dat->h.frag_count) * sizeof(DATAGRAM));
+	int key = make_key(dat->h.source, dat->h.msg_num);
+	struct QUEUE_EL* el = tree_get(key);
+	if(el == NULL)
+	{
+		el = malloc(sizeof(struct QUEUE_EL));
+		el->frags = malloc((dat->h.frag_count) * sizeof(DATAGRAM));
 
 		int bytes_used = sizeof(struct QUEUE_EL) +  (dat->h.frag_count * sizeof(DATAGRAM));
+		free_bytes -= bytes_used;
 		while(free_bytes < bytes_used)
 		{
 			dequeue(q);
 		}
-		free_bytes -= bytes_used;
 
 		el->num_frags_needed = dat->h.frag_count;
 		el->num_frags_gotten = 0;
@@ -250,7 +254,10 @@ static bool enqueue(TRANSQUEUE* q, DATAGRAM* dat)
 
 		el->down = q->top;
 		el->up = NULL;
-		q->top->up = el;
+		if(q->top != NULL)
+		{
+			q->top->up = el;
+		}
 		q->top = el;
 	}
 
