@@ -253,7 +253,7 @@ void net_send_buffered()
  * This function is called from the transport layer
  * return false on some error
  */
-void net_send(char* msg, int len, CnetAddr dst) 
+bool net_send(char* msg, int len, CnetAddr dst) 
 {
 		/*
 		 * call get_nth_best_node and try send the data there,
@@ -270,6 +270,8 @@ void net_send(char* msg, int len, CnetAddr dst)
 		 * it on buff 
 		 */
 		try_to_send(pack, buff);
+
+		return true;
 }
 
 /*
