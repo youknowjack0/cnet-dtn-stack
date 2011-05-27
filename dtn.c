@@ -16,6 +16,11 @@
 
 static WLANRESULT my_WLAN_model(WLANSIGNAL *sig);
 
+EVENT_HANDLER(start_sending)
+{
+
+}
+
 void message_receive(char* data, int len, CnetAddr sender)
 {
 		size_t msglen = len;
