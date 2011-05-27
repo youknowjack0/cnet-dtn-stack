@@ -290,13 +290,8 @@ static int comp(const void* one, const void* two)
  */
 void transport_recv(char* msg, int len, CnetAddr sender) 
 {
-		DATAGRAM* d = (DATAGRAM*) msg;
-		/* 
-		 * Check length
-		 */
-		if(len != (d->msg_size + DATAGRAM_HEADER_SIZE));
-		return; 
 
+		DATAGRAM * d = (DATAGRAM*) msg;
 
 		/* 
 		 * Check integrity 
